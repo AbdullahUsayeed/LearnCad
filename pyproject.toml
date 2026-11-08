@@ -1,0 +1,15 @@
+[project]
+name = "learncad-freecad"
+version = "0.4.6"
+description = "A live senior-engineer mentor for FreeCAD"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "LGPL-2.1-or-later" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

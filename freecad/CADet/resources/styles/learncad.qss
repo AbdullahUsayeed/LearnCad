@@ -1,0 +1,317 @@
+/* LearnCad orange/black overrides.
+   Applied on top of FreeCAD's theme at runtime. Keep selectors narrow. */
+
+QMainWindow,
+QDialog,
+QDockWidget {
+  background-color: #0a0a0a;
+}
+
+QWidget {
+  color: #f5f5f5;
+}
+
+QMenuBar {
+  background-color: #050505;
+  color: #f5f5f5;
+}
+
+QMenuBar::item {
+  background: transparent;
+  padding: 5px 9px;
+}
+
+QMenuBar::item:selected,
+QMenuBar::item:pressed {
+  background: #ff7a18;
+  color: #080808;
+}
+
+QMenu {
+  background-color: #111111;
+  border: 1px solid #ff7a18;
+}
+
+QMenu::item {
+  padding: 6px 22px 6px 22px;
+}
+
+QMenu::item:selected {
+  background: #ff7a18;
+  color: #080808;
+}
+
+QMenu::separator {
+  height: 1px;
+  background: #2a2a2a;
+  margin: 4px 8px;
+}
+
+QToolBar {
+  background: #0a0a0a;
+  border: 0;
+  spacing: 3px;
+}
+
+QToolButton {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px;
+}
+
+QToolButton:hover {
+  background: #2a1608;
+  border: 1px solid #ff7a18;
+}
+
+QToolButton:pressed,
+QToolButton:checked {
+  background: #ff7a18;
+  border: 1px solid #ffb347;
+}
+
+QStatusBar {
+  background: #050505;
+  color: #cfcfcf;
+}
+
+QStatusBar::item {
+  border: 0;
+}
+
+QDockWidget {
+  titlebar-close-icon: none;
+  titlebar-normal-icon: none;
+}
+
+QDockWidget::title {
+  background: #121212;
+  color: #ffb347;
+  padding: 6px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+QTabWidget::pane {
+  border: 1px solid #2a2a2a;
+  background: #0d0d0d;
+}
+
+QTabBar::tab {
+  background: #141414;
+  color: #cfcfcf;
+  padding: 6px 12px;
+  border: 0;
+  border-right: 1px solid #1f1f1f;
+}
+
+QTabBar::tab:selected {
+  background: #ff7a18;
+  color: #080808;
+}
+
+QTabBar::tab:hover {
+  background: #2a1608;
+  color: #ffb347;
+}
+
+QTreeView,
+QListView,
+QTableView,
+QTreeWidget,
+QListWidget,
+QTableWidget {
+  background: #0f0f0f;
+  alternate-background-color: #161616;
+  color: #f5f5f5;
+  border: 1px solid #242424;
+  selection-background-color: #ff7a18;
+  selection-color: #080808;
+}
+
+QHeaderView::section {
+  background: #1a1a1a;
+  color: #ffb347;
+  border: 0;
+  border-right: 1px solid #2a2a2a;
+  padding: 4px;
+}
+
+QLineEdit,
+QTextEdit,
+QPlainTextEdit,
+QComboBox,
+QSpinBox,
+QDoubleSpinBox {
+  background: #121212;
+  color: #f5f5f5;
+  border: 1px solid #333333;
+  border-radius: 3px;
+  padding: 3px;
+  selection-background-color: #ff7a18;
+  selection-color: #080808;
+}
+
+QLineEdit:focus,
+QTextEdit:focus,
+QPlainTextEdit:focus,
+QComboBox:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus {
+  border: 1px solid #ff7a18;
+}
+
+QComboBox::drop-down {
+  border: 0;
+  width: 18px;
+}
+
+QComboBox QAbstractItemView {
+  background: #111111;
+  color: #f5f5f5;
+  border: 1px solid #ff7a18;
+  selection-background-color: #ff7a18;
+  selection-color: #080808;
+}
+
+QPushButton {
+  background: #1a1a1a;
+  color: #f5f5f5;
+  border: 1px solid #333333;
+  border-radius: 4px;
+  padding: 5px 10px;
+}
+
+QPushButton:hover {
+  background: #2a1608;
+  border: 1px solid #ff7a18;
+  color: #ffb347;
+}
+
+QPushButton:pressed {
+  background: #ff7a18;
+  color: #080808;
+}
+
+QPushButton:default {
+  border: 1px solid #ff7a18;
+}
+
+QGroupBox {
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+QGroupBox::title {
+  subcontrol-origin: margin;
+  left: 8px;
+  padding: 0 4px;
+  color: #ffb347;
+}
+
+QCheckBox,
+QRadioButton {
+  color: #f5f5f5;
+}
+
+QScrollBar:vertical {
+  background: #0d0d0d;
+  width: 12px;
+  margin: 0;
+}
+
+QScrollBar:horizontal {
+  background: #0d0d0d;
+  height: 12px;
+  margin: 0;
+}
+
+QScrollBar::handle:vertical,
+QScrollBar::handle:horizontal {
+  background: #ff7a18;
+  border-radius: 6px;
+  min-height: 20px;
+  min-width: 20px;
+}
+
+QScrollBar::handle:vertical:hover,
+QScrollBar::handle:horizontal:hover {
+  background: #ffb347;
+}
+
+QScrollBar::add-line,
+QScrollBar::sub-line {
+  background: none;
+  border: 0;
+  height: 0;
+  width: 0;
+}
+
+QProgressBar {
+  background: #111111;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  text-align: center;
+  color: #f5f5f5;
+}
+
+QProgressBar::chunk {
+  background: #ff7a18;
+}
+
+QSplitter::handle {
+  background: #1a1a1a;
+}
+
+QToolTip {
+  background: #111111;
+  color: #ffb347;
+  border: 1px solid #ff7a18;
+  padding: 4px;
+}
+
+QScrollArea {
+  border: 0;
+}
+
+/* Left TOOL/Mentor tabs and the tools page */
+QTabBar::tab {
+    background: #111111;
+    color: #9aa7b4;
+    border: 1px solid #2a2a2a;
+    padding: 7px 16px;
+    min-width: 74px;
+}
+QTabBar::tab:selected {
+    background: #ff7a18;
+    color: #080808;
+    font-weight: 700;
+    border-color: #ff7a18;
+}
+QTabBar::tab:hover:!selected {
+    background: #1b1b1b;
+    color: #f5f5f5;
+}
+QDockWidget#LearnCadToolsDock {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #15100b, stop:0.55 #1d1108, stop:1 #2a1406);
+}
+QDockWidget#LearnCadToolsDock > QWidget {
+    background: transparent;
+}
+QDockWidget#LearnCadToolsDock QScrollArea,
+QDockWidget#LearnCadToolsDock QScrollArea > QWidget > QWidget {
+    background: transparent;
+    border: none;
+}
+QDockWidget#LearnCadToolsDock QGroupBox {
+    background: transparent;
+}
+QDockWidget#LearnCadToolsDock QTreeWidget,
+QDockWidget#LearnCadToolsDock QListWidget,
+QDockWidget#LearnCadToolsDock QTableWidget {
+    background: rgba(0, 0, 0, 0.18);
+    alternate-background-color: rgba(255, 122, 24, 0.06);
+}
