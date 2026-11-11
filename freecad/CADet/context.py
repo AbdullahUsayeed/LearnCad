@@ -149,6 +149,7 @@ def _sketch_info(obj) -> SketchInfo:
         geometry_types=[str(_safe(lambda: g.TypeId, "") or "") for g in list(_safe(lambda: obj.Geometry, []) or [])[:MAX_GEOMETRY]],
         state=[str(s) for s in (_safe(lambda: list(obj.State), []) or [])],
         visible=bool(_safe(lambda: obj.ViewObject.Visibility, True)),
+        helper=bool(_safe(lambda: getattr(obj, "LearnCadHelper", False), False)),
     )
 
 
@@ -380,12 +381,9 @@ def build_light_signature() -> tuple:
 
     items: list[Any] = [doc.Name, bool(getattr(doc, "Modified", False)), len(objects)]
     edit = _edit_object()
-    selection = _selection()
     items.extend([
         _workbench_name(),
         getattr(edit, "Name", "") if edit else "",
-        selection.object_name,
-        tuple(selection.subelements),
     ])
 
     for obj in objects:

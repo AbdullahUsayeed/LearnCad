@@ -315,3 +315,302 @@ QDockWidget#LearnCadToolsDock QTableWidget {
     background: rgba(0, 0, 0, 0.18);
     alternate-background-color: rgba(255, 122, 24, 0.06);
 }
+
+/* ------------------------------------------------------------------ */
+/* LearnCad mentor panel                                               */
+/* ------------------------------------------------------------------ */
+
+QWidget#MentorPanel {
+  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+    stop:0 #101010, stop:0.45 #0c0c0c, stop:1 #0a0a0a);
+}
+
+QLabel#brandTitle {
+  color: #ffffff;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+QLabel#brandSubtitle {
+  color: #ff9a3c;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+QLabel#statusLine {
+  color: #9aa7b4;
+  font-size: 10px;
+  padding: 0 2px;
+}
+
+QLabel#statusPill {
+  background: #2f8f5b;
+  color: #080808;
+  border-radius: 13px;
+  padding: 7px 12px;
+  font-weight: 700;
+}
+
+QToolButton#menuButton {
+  background: #171717;
+  border: 1px solid #2b2b2b;
+  border-radius: 8px;
+  padding: 4px 9px;
+  font-size: 16px;
+  color: #f5f5f5;
+}
+
+QToolButton#menuButton:hover {
+  background: #24160a;
+  border-color: #ff7a18;
+  color: #ffb347;
+}
+
+QFrame#coachAnswerCard {
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+    stop:0 rgba(255,122,24,0.10), stop:1 rgba(255,255,255,0.03));
+  border: 1px solid rgba(255,122,24,0.24);
+  border-radius: 13px;
+}
+
+QTextBrowser#coachAnswer {
+  background: transparent;
+  border: none;
+  padding: 1px;
+  selection-background-color: #ff7a18;
+  selection-color: #080808;
+}
+
+QFrame#nextStep {
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+    stop:0 rgba(255,122,24,0.13), stop:1 rgba(255,255,255,0.025));
+  border: 1px solid rgba(255,122,24,0.22);
+  border-left: 3px solid #ff7a18;
+  border-radius: 10px;
+}
+
+QLabel#sectionLabel {
+  color: #ff9a3c;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.6px;
+  background: transparent;
+}
+
+QLabel#nextText {
+  color: #f5f5f5;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+QPushButton#guideButton {
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff7a18, stop:1 #ff9a3c);
+  color: #080808;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 13px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+QPushButton#guideButton:hover {
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff9a3c, stop:1 #ffb347);
+}
+
+QPushButton#guideButton:disabled {
+  background: #2a2a2a;
+  color: #777777;
+}
+
+QPushButton#fixButton {
+  background: transparent;
+  color: #ffb347;
+  border: 1px solid rgba(255,122,24,0.55);
+  border-radius: 8px;
+  padding: 6px 11px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+QPushButton#fixButton:hover {
+  background: rgba(255,122,24,0.16);
+  border-color: #ff9a3c;
+}
+
+QFrame#guidedStep {
+  background: rgba(255,122,24,0.08);
+  border: 1px solid rgba(255,122,24,0.30);
+  border-left: 4px solid #ff7a18;
+  border-radius: 10px;
+}
+
+QLabel#guidedCount {
+  color: #ff9a3c;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+QLabel#guidedTitle {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+QLabel#guidedText {
+  color: #f5f5f5;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+QPushButton#primarySmall {
+  background: #ff7a18;
+  color: #080808;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 14px;
+  font-weight: 700;
+}
+
+QPushButton#primarySmall:hover {
+  background: #ff9a3c;
+}
+
+QToolButton#ghostButton {
+  background: transparent;
+  color: #9aa7b4;
+  border: 1px solid #2f2f2f;
+  border-radius: 7px;
+  padding: 5px 10px;
+}
+
+QToolButton#ghostButton:hover {
+  color: #ffffff;
+  border-color: #ff7a18;
+}
+
+QTextBrowser#notesView,
+QTextBrowser#contextView {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid #262626;
+  border-radius: 10px;
+  padding: 9px;
+}
+
+QLineEdit#goalInput {
+  background: #141414;
+  border: 1px solid #2e2e2e;
+  border-radius: 9px;
+  padding: 7px 11px;
+  font-size: 12px;
+  selection-background-color: #ff7a18;
+  selection-color: #080808;
+}
+
+QLineEdit#goalInput:focus {
+  border: 1px solid #ff7a18;
+  background: #191919;
+}
+
+QPushButton#askButton {
+  background: #ff7a18;
+  color: #080808;
+  border: none;
+  border-radius: 9px;
+  padding: 7px 18px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+QPushButton#askButton:hover {
+  background: #ff9a3c;
+}
+
+QPushButton#askButton:disabled {
+  background: #2a2a2a;
+  color: #777777;
+}
+
+QLabel#footerLabel {
+  color: #7f8b96;
+  font-size: 9px;
+}
+
+QTabWidget#detailsTabs::pane {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid #262626;
+  border-radius: 9px;
+}
+
+QTabWidget#detailsTabs QTabBar::tab {
+  background: #141414;
+  color: #9aa7b4;
+  border: 1px solid #242424;
+  border-radius: 7px;
+  padding: 5px 12px;
+  margin-right: 4px;
+}
+
+QTabWidget#detailsTabs QTabBar::tab:selected {
+  background: #ff7a18;
+  color: #080808;
+  font-weight: 700;
+  border-color: #ff7a18;
+}
+
+QTextBrowser#detailView {
+  background: transparent;
+  border: none;
+  padding: 6px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Course panel                                                        */
+/* ------------------------------------------------------------------ */
+
+QPushButton#courseButton {
+  background: #141414;
+  color: #ffb347;
+  border: 1px solid rgba(255,122,24,0.45);
+  border-left: 4px solid #ff7a18;
+  border-radius: 9px;
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 700;
+}
+
+QPushButton#courseButton:hover {
+  background: #1c1207;
+  border-color: #ff9a3c;
+}
+
+QFrame#courseCard {
+  background: #121212;
+  border: 1px solid #2b2b2b;
+  border-radius: 10px;
+}
+
+QLabel#courseSection {
+  color: #ff7a18;
+  font-size: 13px;
+  font-weight: 800;
+  padding-top: 6px;
+}
+
+QLabel#courseTitle {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+QLabel#courseText {
+  color: #f5f5f5;
+  font-size: 11px;
+}
+
+QLabel#courseGoal {
+  color: #ffb347;
+  font-size: 11px;
+  font-weight: 600;
+}

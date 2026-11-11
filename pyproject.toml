@@ -1,6 +1,6 @@
 [project]
 name = "learncad-freecad"
-version = "0.4.6"
+version = "0.6.5"
 description = "A live senior-engineer mentor for FreeCAD"
 readme = "README.md"
 requires-python = ">=3.11"

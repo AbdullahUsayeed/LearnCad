@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileNotice: Part of the CADet addon.
-"""Paid AI client for the LearnCad subscription server.
+"""AI transport for LearnCad.
 
-The desktop app never holds the language-model API key. It activates a license
-with the user's server, stores the returned access token, and sends AI requests
-through that server.
+Supports the LearnCad subscription server (license token, no provider key in the
+desktop app) and any OpenAI-compatible endpoint where the user supplies their
+own API key. A local Ollama server works without a key.
 """
 
 from __future__ import annotations
@@ -22,21 +22,20 @@ class CloudAIError(RuntimeError):
 def _base(base_url: str) -> str:
     value = str(base_url or "").strip().rstrip("/")
     if not value:
-        raise CloudAIError("Set the LearnCad AI server URL first.")
+        raise CloudAIError("Set the AI server URL first.")
     if not (value.startswith("https://") or value.startswith("http://")):
-        raise CloudAIError("The LearnCad AI server URL must start with https:// or http://.")
+        raise CloudAIError("The AI server URL must start with https:// or http://.")
     return value
 
 
-def _request(
-    base_url: str,
-    path: str,
+def _request_url(
+    url: str,
     payload: dict[str, Any] | None = None,
     token: str = "",
     method: str = "POST",
     timeout: int = 60,
+    unauthorized: str = "",
 ) -> dict[str, Any]:
-    url = _base(base_url) + path
     body = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Accept": "application/json"}
     if body is not None:
@@ -55,24 +54,44 @@ def _request(
             pass
         if exc.code in (401, 402, 403):
             raise CloudAIError(
-                "Your LearnCad AI subscription is inactive or expired. Activate it again in Setup."
+                unauthorized
+                or "Your LearnCad AI subscription is inactive or expired. Activate it again in Setup."
             ) from exc
         message = f"The AI server returned HTTP {exc.code}."
         if detail:
             message += " " + detail
         raise CloudAIError(message) from exc
     except urllib.error.URLError as exc:
-        raise CloudAIError(f"Could not reach the LearnCad AI server: {exc.reason}") from exc
+        reason = getattr(exc, "reason", exc)
+        raise CloudAIError(f"Could not reach the AI server: {reason}") from exc
     except TimeoutError as exc:
-        raise CloudAIError("The LearnCad AI server timed out.") from exc
+        raise CloudAIError("The AI server timed out.") from exc
 
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise CloudAIError("The LearnCad AI server returned a response that was not JSON.") from exc
+        raise CloudAIError("The AI server returned a response that was not JSON.") from exc
     if not isinstance(parsed, dict):
-        raise CloudAIError("The LearnCad AI server returned an unexpected response.")
+        raise CloudAIError("The AI server returned an unexpected response.")
     return parsed
+
+
+def _request(
+    base_url: str,
+    path: str,
+    payload: dict[str, Any] | None = None,
+    token: str = "",
+    method: str = "POST",
+    timeout: int = 60,
+) -> dict[str, Any]:
+    return _request_url(_base(base_url) + path, payload, token, method, timeout)
+
+
+def _completions_url(base_url: str) -> str:
+    value = _base(base_url)
+    if value.endswith("/chat/completions"):
+        return value
+    return value + "/chat/completions"
 
 
 def activate(base_url: str, email: str, license_code: str, device: str) -> dict[str, Any]:
@@ -98,3 +117,23 @@ def status(base_url: str, token: str) -> dict[str, Any]:
 
 def chat(base_url: str, token: str, payload: dict[str, Any]) -> dict[str, Any]:
     return _request(base_url, "/v1/chat/completions", payload, token=token, timeout=90)
+
+
+def chat_compatible(
+    base_url: str,
+    api_key: str,
+    payload: dict[str, Any],
+    timeout: int = 90,
+) -> dict[str, Any]:
+    """Call any OpenAI-compatible chat endpoint using a user API key.
+
+    The base URL may point at the API root (``.../v1``) or directly at the
+    ``/chat/completions`` route. A local server such as Ollama needs no key.
+    """
+    return _request_url(
+        _completions_url(base_url),
+        payload,
+        token=str(api_key or "").strip(),
+        timeout=timeout,
+        unauthorized="The AI provider rejected the API key. Check the key in Setup.",
+    )

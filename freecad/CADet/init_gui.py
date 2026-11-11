@@ -36,6 +36,25 @@ class _OpenMentorCommand:
         panel.show_panel()
 
 
+class _ImportCourseCommand:
+    def GetResources(self):
+        return {
+            "MenuText": "Import Course...",
+            "ToolTip": "Install a .learncad course package",
+            "Pixmap": _icon_path(),
+        }
+
+    def IsActive(self):
+        return True
+
+    def Activated(self):
+        from . import panel
+
+        panel.show_panel()
+        if panel._PANEL is not None:
+            panel._PANEL._import_course()
+
+
 class _ReviewCommand:
     def GetResources(self):
         return {
@@ -53,6 +72,25 @@ class _ReviewCommand:
         panel.show_panel()
         if panel._PANEL is not None:
             panel._PANEL._force_review()
+
+
+class _FixConstraintsCommand:
+    def GetResources(self):
+        return {
+            "MenuText": "Fix Constraints",
+            "ToolTip": "Make the active sketch fully constrained",
+            "Pixmap": _icon_path(),
+        }
+
+    def IsActive(self):
+        return True
+
+    def Activated(self):
+        from . import panel
+
+        panel.show_panel()
+        if panel._PANEL is not None:
+            panel._PANEL._fix_constraints()
 
 
 class _RenderCommand:
@@ -165,7 +203,9 @@ class _StudioLightCommand:
 
 
 Gui.addCommand("CADet_OpenMentor", _OpenMentorCommand())
+Gui.addCommand("CADet_ImportCourse", _ImportCourseCommand())
 Gui.addCommand("CADet_ReviewModel", _ReviewCommand())
+Gui.addCommand("CADet_FixConstraints", _FixConstraintsCommand())
 Gui.addCommand("CADet_StudioLook", _StudioCommand())
 Gui.addCommand("CADet_StudioLight", _StudioLightCommand())
 Gui.addCommand("CADet_RenderPreview", _RenderCommand())
@@ -181,7 +221,7 @@ class CADetWorkbench(Gui.Workbench):
 
     def Initialize(self):
         self.appendToolbar("LearnCad", ["CADet_OpenMentor", "CADet_ReviewModel", "CADet_StudioLook", "CADet_ToggleTree", "CADet_Settings"])
-        self.appendMenu("LearnCad", ["CADet_OpenMentor", "CADet_ReviewModel", "CADet_StudioLook", "CADet_StudioLight", "CADet_RenderPreview", "CADet_ToggleTree", "CADet_ActivateBody", "CADet_Settings"])
+        self.appendMenu("LearnCad", ["CADet_OpenMentor", "CADet_ImportCourse", "CADet_ReviewModel", "CADet_StudioLook", "CADet_StudioLight", "CADet_RenderPreview", "CADet_ToggleTree", "CADet_ActivateBody", "CADet_Settings"])
 
     def Activated(self):
         from . import panel
@@ -199,6 +239,38 @@ class CADetWorkbench(Gui.Workbench):
 
 
 Gui.addWorkbench(CADetWorkbench())
+
+
+_STANDALONE_STARTED = False
+
+
+def _standalone_autostart() -> None:
+    """Open LearnCad directly when launched from the standalone Linux app."""
+    global _STANDALONE_STARTED
+    if _STANDALONE_STARTED or os.environ.get("LEARNCAD_STANDALONE") != "1":
+        return
+    try:
+        if "CADetWorkbench" not in Gui.listWorkbenches():
+            return
+        Gui.activateWorkbench("CADetWorkbench")
+    except Exception:
+        return
+    _STANDALONE_STARTED = True
+    try:
+        from . import panel
+
+        panel.show_panel()
+    except Exception:
+        pass
+
+
+try:
+    from .compat import QtCore
+
+    for _delay in (900, 2500, 6000, 12000):
+        QtCore.QTimer.singleShot(_delay, _standalone_autostart)
+except Exception:
+    pass
 
 try:
     from . import branding

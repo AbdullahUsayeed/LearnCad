@@ -1,24 +1,25 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileNotice: Part of the CADet addon.
-"""The simple CADet panel.
+"""The LearnCad coach panel.
 
-Default view: what you are making, the one next step, a big Guide Me button,
-and the top mentor notes. Context, plan, activity, review and AI live behind
-"More details". The engine is unchanged.
+One left panel and one job: state, the single next step, and one mentor note.
+The engine writes into structured widgets; the constraint panel only appears
+while a sketch or feature task is active. There is one slim Ask bar.
 """
 
 from __future__ import annotations
 
 import html
 import os
+import re
 import shutil
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from .compat import QtCore, QtGui, QtWidgets
+from .compat import QtCore, QtGui, QtWidgets, blocking_modal
 
-from . import actions, ai_client, branding, cloud_ai, coach, guide, render_bridge, secret_store, settings, simple_mode, studio, suggest
+from . import actions, ai_client, branding, cloud_ai, coach, course, course_package, guide, render_bridge, secret_store, settings, simple_mode, studio, suggest
 from .engine import MentorEngine
 from .model import Analysis, Snapshot
 
@@ -33,6 +34,64 @@ SEVERITY_COLOR = {
     "good": "#2f8f5b",
     "info": "#ff9a3c",
 }
+
+
+# Control names the coach/AI is allowed to point at. The first match in an
+# answer gets highlighted so "what do I press?" also glows the right button.
+_HINT_KEYWORDS = (
+    ("rectangle", "sketch:Rect"),
+    ("rect", "sketch:Rect"),
+    ("circle", "sketch:Circle"),
+    ("arc", "sketch:Arc"),
+    ("polyline", "sketch:Line"),
+    ("line", "sketch:Line"),
+    ("coincident", "sketch:Coincident"),
+    ("horizontal", "sketch:Horiz"),
+    ("horiz", "sketch:Horiz"),
+    ("vertical", "sketch:Vert"),
+    ("vert", "sketch:Vert"),
+    ("dimension", "sketch:Dim"),
+    ("dim", "sketch:Dim"),
+    ("radius", "sketch:Radius"),
+    ("done", "sketch:Done"),
+    ("finish", "sketch:Done"),
+    ("pad", "main:Pad"),
+    ("pocket", "main:Pocket"),
+    ("hole", "main:Hole"),
+    ("fillet", "main:Fillet"),
+    ("chamfer", "main:Fillet"),
+    ("export", "main:Export"),
+    ("stl", "main:Export"),
+    ("render", "main:Render"),
+    ("studio", "panel:studio"),
+    ("setup", "panel:setup"),
+    ("settings", "panel:setup"),
+    ("click sketch", "main:Sketch"),
+    ("new sketch", "main:Sketch"),
+    ("create sketch", "main:Sketch"),
+    ("start a sketch", "main:Sketch"),
+    ("body + sketch", "main:Sketch"),
+    ("guide me", "panel:primary"),
+    ("do this next", "panel:primary"),
+    ("course", "panel:course"),
+    ("lesson", "panel:course"),
+)
+
+
+def _hint_targets(text: str) -> list[str]:
+    low = str(text or "").lower()
+    found: list[tuple[int, int, str]] = []
+    for keyword, target in _HINT_KEYWORDS:
+        match = re.search(r"\b" + re.escape(keyword) + r"\b", low)
+        if match is not None:
+            found.append((match.start(), -len(keyword), target))
+    found.sort()
+    ordered: list[str] = []
+    for _pos, _length, target in found:
+        if target not in ordered:
+            ordered.append(target)
+    return ordered
+
 
 
 def _esc(text: Any) -> str:
@@ -154,10 +213,115 @@ class _TestWorker(QtCore.QThread):
         self.done.emit(ok, message)
 
 
+class _CourseDialog(QtWidgets.QDialog):
+    """Guided courses, their lessons, and an import button."""
+
+    def __init__(self, courses, completed, on_start, on_import=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("LearnCad Courses")
+        self.setMinimumWidth(560)
+        self.resize(600, 720)
+        self._on_start = on_start
+        self._on_import = on_import
+
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setSpacing(10)
+        lesson_count = sum(len(item.lessons) for item in courses)
+        intro = QtWidgets.QLabel(
+            f"{len(courses)} courses, {lesson_count} lessons. Each lesson highlights "
+            "the next control and checks the model as you go. Progress is saved. "
+            "Import a .learncad package to add a community course."
+        )
+        intro.setWordWrap(True)
+        outer.addWidget(intro)
+
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        body = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(body)
+        layout.setSpacing(10)
+
+        done_ids = set(completed or [])
+        self._buttons = {}
+        for course in courses:
+            heading = QtWidgets.QLabel(course.title)
+            heading.setObjectName("courseSection")
+            layout.addWidget(heading)
+            description = QtWidgets.QLabel(course.summary)
+            description.setWordWrap(True)
+            description.setObjectName("courseText")
+            layout.addWidget(description)
+
+            for index, lesson in enumerate(course.lessons, 1):
+                done = lesson.id in done_ids
+                card = QtWidgets.QFrame()
+                card.setObjectName("courseCard")
+                inner = QtWidgets.QVBoxLayout(card)
+                inner.setContentsMargins(12, 10, 12, 10)
+                inner.setSpacing(4)
+
+                title = QtWidgets.QLabel(
+                    f"{index}. {lesson.title}" + ("   \u2713 done" if done else "")
+                )
+                title.setObjectName("courseTitle")
+                inner.addWidget(title)
+
+                summary = QtWidgets.QLabel(lesson.summary)
+                summary.setWordWrap(True)
+                summary.setObjectName("courseText")
+                inner.addWidget(summary)
+
+                goal = QtWidgets.QLabel("Goal: " + lesson.outcome)
+                goal.setWordWrap(True)
+                goal.setObjectName("courseGoal")
+                inner.addWidget(goal)
+
+                row = QtWidgets.QHBoxLayout()
+                row.addStretch(1)
+                button = QtWidgets.QPushButton("Review lesson" if done else "Start lesson")
+                button.setCursor(QtCore.Qt.PointingHandCursor)
+                button.clicked.connect(
+                    lambda checked=False, lesson_id=lesson.id: self._start(lesson_id)
+                )
+                self._buttons[lesson.id] = button
+                row.addWidget(button)
+                inner.addLayout(row)
+                layout.addWidget(card)
+
+        layout.addStretch(1)
+        scroll.setWidget(body)
+        outer.addWidget(scroll, 1)
+
+        bottom = QtWidgets.QHBoxLayout()
+        import_button = QtWidgets.QPushButton("Import course...")
+        import_button.setCursor(QtCore.Qt.PointingHandCursor)
+        import_button.clicked.connect(self._import)
+        bottom.addWidget(import_button)
+        bottom.addStretch(1)
+        close = QtWidgets.QPushButton("Close")
+        close.clicked.connect(self.reject)
+        bottom.addWidget(close)
+        outer.addLayout(bottom)
+
+    def _start(self, lesson_id: str) -> None:
+        self.accept()
+        QtCore.QTimer.singleShot(0, lambda: self._on_start(lesson_id))
+
+    def _import(self) -> None:
+        if self._on_import is not None and self._on_import():
+            self.accept()
+
+
 class MentorPanel(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._config = settings.load()
+        try:
+            self._courses_dir = os.path.join(settings.config_dir(), "courses")
+        except Exception:
+            self._courses_dir = ""
+        self._load_installed_courses()
         self._snapshot: Optional[Snapshot] = None
         self._analysis: Optional[Analysis] = None
         self._worker: Optional[_AskWorker] = None
@@ -167,11 +331,14 @@ class MentorPanel(QtWidgets.QWidget):
         self._walkthrough = None
         self._walkthrough_steps: list = []
         self._walkthrough_index = 0
+        self._course_lesson = None
         self._target_widget = None
         self._target_clicked = False
         self._highlighted = None
         self._highlight_timer = None
         self._pulse_on = False
+        self._render_cache = None
+        self._suggestion_cache = None
         self._history: list[dict[str, str]] = []
         self._engine = MentorEngine(
             int(self._config.get("poll_ms", 900)),
@@ -186,6 +353,10 @@ class MentorPanel(QtWidgets.QWidget):
     # ---------------------------------------------------------------- UI
 
     def _set_answer(self, speaker: str, text: str) -> None:
+        try:
+            self._answer_card.setVisible(True)
+        except Exception:
+            pass
         safe = _esc(text).replace("\n", "<br>")
         self._answer.setHtml(
             f'<div style="color:#ff9a3c;font-size:9px;font-weight:700;'
@@ -198,34 +369,46 @@ class MentorPanel(QtWidgets.QWidget):
             pass
 
     def _build_ui(self) -> None:
+        self.setObjectName("MentorPanel")
         outer = QtWidgets.QVBoxLayout(self)
-        outer.setContentsMargins(14, 12, 14, 10)
-        outer.setSpacing(8)
+        outer.setContentsMargins(16, 14, 16, 12)
+        outer.setSpacing(12)
 
         header = QtWidgets.QHBoxLayout()
+        header.setSpacing(11)
+        logo = QtWidgets.QLabel()
+        icon_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "resources", "icons", "learncad.svg"
+        )
+        pixmap = QtGui.QIcon(icon_path).pixmap(30, 30)
+        if not pixmap.isNull():
+            logo.setPixmap(pixmap)
+        logo.setFixedSize(30, 30)
+        header.addWidget(logo)
+
+        brand = QtWidgets.QVBoxLayout()
+        brand.setSpacing(0)
         title = QtWidgets.QLabel("LearnCad")
-        font = title.font()
-        font.setPointSize(font.pointSize() + 5)
-        font.setBold(True)
-        title.setFont(font)
-        header.addWidget(title)
+        title.setObjectName("brandTitle")
+        brand.addWidget(title)
+        header.addLayout(brand)
         header.addStretch(1)
 
         self._score = QtWidgets.QLabel("Ready")
+        self._score.setObjectName("statusPill")
         self._score.setAlignment(QtCore.Qt.AlignCenter)
         self._score.setMinimumWidth(86)
-        self._score.setStyleSheet(
-            "QLabel { border-radius: 10px; padding: 6px 10px; font-weight: 700; color: white; background: #888; }"
-        )
         header.addWidget(self._score)
 
         self._menu_btn = QtWidgets.QToolButton()
+        self._menu_btn.setObjectName("menuButton")
         self._menu_btn.setText("\u22ef")
         self._menu_btn.setToolTip("LearnCad options")
         self._menu_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         menu = QtWidgets.QMenu(self._menu_btn)
-        menu.addAction("Details", lambda: self._show_details(not self._advanced.isVisible()))
-        menu.addAction("Tools panel", self._toggle_tools)
+        menu.addAction("Courses", self._open_course)
+        menu.addAction("Import course...", self._import_course)
+        menu.addAction("All tools", self._open_all_tools)
         menu.addAction("Studio look", self._studio)
         menu.addAction("Render studio", self._render_preview)
         menu.addAction("Setup", self._open_settings)
@@ -261,18 +444,32 @@ class MentorPanel(QtWidgets.QWidget):
         self._details_btn.hide()
 
         self._status = QtWidgets.QLabel("No document yet")
+        self._status.setObjectName("statusLine")
         self._status.setWordWrap(True)
-        self._status.setStyleSheet("color: #888; font-size: 10px;")
         outer.addWidget(self._status)
 
+        self._course_btn = QtWidgets.QPushButton("Courses")
+        self._course_btn.setObjectName("courseButton")
+        self._course_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self._course_btn.setToolTip("Open the LearnCad courses")
+        self._course_btn.clicked.connect(self._open_course)
+        outer.addWidget(self._course_btn)
+        self._update_course_button()
+
+        answer_card = QtWidgets.QFrame()
+        answer_card.setObjectName("coachAnswerCard")
+        answer_layout = QtWidgets.QVBoxLayout(answer_card)
+        answer_layout.setContentsMargins(13, 11, 13, 11)
+        answer_layout.setSpacing(6)
         self._answer = QtWidgets.QTextBrowser()
+        self._answer.setObjectName("coachAnswer")
+        self._answer.setFrameShape(QtWidgets.QFrame.NoFrame)
         self._answer.setOpenExternalLinks(False)
-        self._answer.setMinimumHeight(90)
-        self._answer.setMaximumHeight(240)
-        self._answer.setStyleSheet(
-            "QTextBrowser { border: 1px solid palette(mid); border-radius: 8px; padding: 8px; }"
-        )
-        outer.addWidget(self._answer, 1)
+        self._answer.setMinimumHeight(0)
+        self._answer.setMaximumHeight(170)
+        answer_layout.addWidget(self._answer, 1)
+        self._answer_card = answer_card
+        answer_card.setVisible(False)
 
         self._guided_frame = QtWidgets.QFrame()
         self._guided_frame.setObjectName("guidedStep")
@@ -281,32 +478,28 @@ class MentorPanel(QtWidgets.QWidget):
         guided_layout.setSpacing(4)
         guided_head = QtWidgets.QHBoxLayout()
         guided_label = QtWidgets.QLabel("GUIDED WALKTHROUGH")
-        guided_label.setStyleSheet(
-            "font-size: 9px; font-weight: 700; color: #ff9a3c; letter-spacing: 1px;"
-        )
+        guided_label.setObjectName("sectionLabel")
         self._guided_count = QtWidgets.QLabel("")
-        self._guided_count.setStyleSheet("color: #ff9a3c; font-size: 10px; font-weight: 700;")
+        self._guided_count.setObjectName("guidedCount")
         guided_head.addWidget(guided_label)
         guided_head.addStretch(1)
         guided_head.addWidget(self._guided_count)
         self._guided_title = QtWidgets.QLabel("")
-        self._guided_title.setStyleSheet("font-weight: 700; font-size: 11px;")
+        self._guided_title.setObjectName("guidedTitle")
         self._guided_text = QtWidgets.QLabel("")
+        self._guided_text.setObjectName("guidedText")
         self._guided_text.setWordWrap(True)
         self._guided_text.setMinimumWidth(0)
         self._guided_text.setMaximumWidth(600)
-        self._guided_text.setStyleSheet("font-weight: 600;")
         guided_buttons = QtWidgets.QHBoxLayout()
         guided_buttons.addStretch(1)
         self._guided_stop = QtWidgets.QToolButton()
+        self._guided_stop.setObjectName("ghostButton")
         self._guided_stop.setText("Stop")
         self._guided_stop.clicked.connect(self._stop_walkthrough)
         self._guided_next = QtWidgets.QPushButton("Next")
+        self._guided_next.setObjectName("primarySmall")
         self._guided_next.setCursor(QtCore.Qt.PointingHandCursor)
-        self._guided_next.setStyleSheet(
-            "QPushButton { background: #ff7a18; color: #080808; border: none; padding: 6px 14px; "
-            "border-radius: 5px; font-weight: 700; } QPushButton:hover { background: #ff9a3c; }"
-        )
         self._guided_next.clicked.connect(self._walkthrough_next)
         guided_buttons.addWidget(self._guided_stop)
         guided_buttons.addWidget(self._guided_next)
@@ -314,10 +507,6 @@ class MentorPanel(QtWidgets.QWidget):
         guided_layout.addWidget(self._guided_title)
         guided_layout.addWidget(self._guided_text)
         guided_layout.addLayout(guided_buttons)
-        self._guided_frame.setStyleSheet(
-            "QFrame#guidedStep { border-left: 4px solid #ff7a18; background: #1a120a; "
-            "border-radius: 6px; }"
-        )
         self._guided_frame.setVisible(False)
         outer.addWidget(self._guided_frame)
 
@@ -328,64 +517,64 @@ class MentorPanel(QtWidgets.QWidget):
         next_layout.setContentsMargins(10, 8, 10, 9)
         next_layout.setSpacing(4)
         next_label = QtWidgets.QLabel("DO THIS NEXT")
-        next_label.setStyleSheet("font-size: 9px; font-weight: 700; color: #888; letter-spacing: 1px;")
+        next_label.setObjectName("sectionLabel")
         self._next = QtWidgets.QLabel("Open a document and I'll start watching.")
+        self._next.setObjectName("nextText")
         self._next.setWordWrap(True)
-        self._next.setStyleSheet("font-weight: 600;")
         self._guide_btn = QtWidgets.QPushButton("Guide me")
-        self._guide_btn.setMinimumHeight(34)
+        self._guide_btn.setObjectName("guideButton")
+        self._guide_btn.setMinimumHeight(36)
         self._guide_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        self._guide_btn.setToolTip("Open the workbench and dialog required for the next step")
+        self._guide_btn.setToolTip("Open the workspace and dialog required for the next step")
         self._guide_btn.clicked.connect(self._guide)
-        self._guide_btn.setStyleSheet(
-            "QPushButton { background: #ff7a18; color: #080808; border: none; padding: 7px 12px; "
-            "border-radius: 5px; font-weight: 700; } "
-            "QPushButton:hover { background: #ff9a3c; } "
-            "QPushButton:disabled { background: #777; color: #ddd; }"
-        )
         self._guide_btn.setEnabled(False)
+        self._fix_btn = QtWidgets.QPushButton("Fix constraints for me")
+        self._fix_btn.setObjectName("fixButton")
+        self._fix_btn.setMinimumHeight(30)
+        self._fix_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self._fix_btn.setToolTip("Add the missing constraints automatically and lock the current shape")
+        self._fix_btn.clicked.connect(self._fix_constraints)
+        self._fix_btn.setVisible(False)
         next_layout.addWidget(next_label)
         next_layout.addWidget(self._next)
         next_layout.addWidget(self._guide_btn)
-        next_frame.setStyleSheet(
-            "QFrame#nextStep { border-left: 3px solid #ff7a18; background: palette(alternate-base); border-radius: 5px; }"
-        )
+        next_layout.addWidget(self._fix_btn)
         outer.addWidget(next_frame)
 
-        self._notes_label = QtWidgets.QLabel("HEADS-UP")
-        self._notes_label.setStyleSheet("font-size: 9px; font-weight: 700; color: #888; letter-spacing: 1px;")
+        self._notes_label = QtWidgets.QLabel("MENTOR")
+        self._notes_label.setObjectName("sectionLabel")
         outer.addWidget(self._notes_label)
         self._simple_notes = QtWidgets.QTextBrowser()
+        self._simple_notes.setObjectName("notesView")
+        self._simple_notes.setFrameShape(QtWidgets.QFrame.NoFrame)
         self._simple_notes.setOpenExternalLinks(False)
-        self._simple_notes.setMinimumHeight(60)
-        self._simple_notes.setMaximumHeight(110)
-        self._simple_notes.setStyleSheet(
-            "QTextBrowser { border: 1px solid palette(mid); border-radius: 6px; padding: 7px; }"
-        )
+        self._simple_notes.setMinimumHeight(0)
+        self._simple_notes.setMaximumHeight(92)
         outer.addWidget(self._simple_notes)
 
+        outer.addWidget(self._answer_card)
+        outer.addStretch(1)
+
         input_row = QtWidgets.QHBoxLayout()
+        input_row.setSpacing(8)
         self._goal_input = QtWidgets.QLineEdit(str(self._config.get("goal", "")))
-        self._goal_input.setPlaceholderText("Ask anything, or tell me what you're making...")
+        self._goal_input.setObjectName("goalInput")
+        self._goal_input.setPlaceholderText("Ask LearnCad...")
         self._goal_input.setToolTip("LearnCad reads the live model and the current selection.")
-        self._goal_input.setMinimumHeight(34)
+        self._goal_input.setMinimumHeight(36)
         self._goal_input.returnPressed.connect(self._submit_input)
-        self._ask_btn = QtWidgets.QPushButton("Send")
-        self._ask_btn.setMinimumHeight(34)
+        self._ask_btn = QtWidgets.QPushButton("Ask")
+        self._ask_btn.setObjectName("askButton")
+        self._ask_btn.setMinimumHeight(36)
         self._ask_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        self._ask_btn.setStyleSheet(
-            "QPushButton { background: #ff7a18; color: #080808; border: none; padding: 6px 16px; "
-            "border-radius: 6px; font-weight: 700; } QPushButton:hover { background: #ff9a3c; } "
-            "QPushButton:disabled { background: #777; color: #ddd; }"
-        )
         self._ask_btn.clicked.connect(self._ask)
         input_row.addWidget(self._goal_input, 1)
         input_row.addWidget(self._ask_btn)
         outer.addLayout(input_row)
 
         self._footer = QtWidgets.QLabel()
+        self._footer.setObjectName("footerLabel")
         self._footer.setWordWrap(True)
-        self._footer.setStyleSheet("color: #888; font-size: 10px;")
         outer.addWidget(self._footer)
 
         self._advanced = QtWidgets.QWidget()
@@ -393,21 +582,27 @@ class MentorPanel(QtWidgets.QWidget):
         advanced.setContentsMargins(0, 0, 0, 0)
         advanced.setSpacing(6)
         self._context = QtWidgets.QTextBrowser()
+        self._context.setObjectName("contextView")
+        self._context.setFrameShape(QtWidgets.QFrame.NoFrame)
         self._context.setOpenExternalLinks(False)
         self._context.setMinimumHeight(86)
-        self._context.setMaximumHeight(120)
-        self._context.setStyleSheet(
-            "QTextBrowser { border: 1px solid palette(mid); border-radius: 6px; padding: 6px; }"
-        )
+        self._context.setMaximumHeight(130)
         advanced.addWidget(self._context)
         self._tabs = QtWidgets.QTabWidget()
+        self._tabs.setObjectName("detailsTabs")
         self._tabs.setDocumentMode(True)
         self._plan = QtWidgets.QTextBrowser()
+        self._plan.setObjectName("detailView")
+        self._plan.setFrameShape(QtWidgets.QFrame.NoFrame)
         self._plan.setOpenExternalLinks(False)
         self._activity = QtWidgets.QTextBrowser()
+        self._activity.setObjectName("detailView")
+        self._activity.setFrameShape(QtWidgets.QFrame.NoFrame)
         self._activity.setOpenExternalLinks(False)
         self._activity.document().setMaximumBlockCount(400)
         self._review = QtWidgets.QTextBrowser()
+        self._review.setObjectName("detailView")
+        self._review.setFrameShape(QtWidgets.QFrame.NoFrame)
         self._review.setOpenExternalLinks(False)
         self._review.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
         self._tabs.addTab(self._plan, "Plan")
@@ -415,15 +610,13 @@ class MentorPanel(QtWidgets.QWidget):
         self._tabs.addTab(self._review, "Review")
         advanced.addWidget(self._tabs, 1)
         self._advanced.setVisible(False)
-        outer.addWidget(self._advanced)
 
         self._activity.append(
-            '<div style="color: #888;">LearnCad is local-first. The deterministic mentor never needs the network. '
-            "AI is included with LearnCad.</div>"
+            '<div style="color: #888;">LearnCad is local-first. The coach never needs the network. '
+            "AI chat is optional and uses the provider you choose in Setup.</div>"
         )
         self._render_footer()
         self._render_empty()
-        self._set_answer("LearnCad", "Hi. What are you making? Ask me anything as you build.")
 
     # ------------------------------------------------------------ engine
 
@@ -515,11 +708,21 @@ class MentorPanel(QtWidgets.QWidget):
         if ok:
             QtCore.QTimer.singleShot(250, self._engine.force)
 
+    def _fix_constraints(self) -> None:
+        if self._snapshot is None:
+            return
+        ok, message = actions.solve_constraints(self._snapshot)
+        self._set_answer("LearnCad", message)
+        self._append_activity(message, "good" if ok else "warn", "guide")
+        if ok:
+            QtCore.QTimer.singleShot(250, self._engine.force)
+
     def _force_review(self) -> None:
         self._engine.force()
-        if self._analysis is not None:
-            self._show_details(True)
-            self._tabs.setCurrentWidget(self._review)
+        if self._snapshot is not None and self._analysis is not None:
+            self._set_answer(
+                "LearnCad", coach.review_report(self._snapshot, self._analysis)
+            )
             self._append_activity("Full review refreshed.", "info", "review")
 
     def _toggle_details(self, checked: bool) -> None:
@@ -537,6 +740,7 @@ class MentorPanel(QtWidgets.QWidget):
         self._notes_label.setVisible(False)
         self._simple_notes.setVisible(False)
         self._simple_notes.setHtml("")
+        self._fix_btn.setVisible(False)
         self._context.setHtml('<div style="color: #888;">No document yet.</div>')
         self._plan.setHtml('<div style="color: #888;">No plan yet.</div>')
         self._review.setPlainText("No model to review yet.")
@@ -549,43 +753,86 @@ class MentorPanel(QtWidgets.QWidget):
         doc = snapshot.doc
 
         self._suggestion = suggest.suggest_action(snapshot, analysis)
-        if self._suggestion is not None:
-            self._guide_btn.setText(self._suggestion.label)
-            self._guide_btn.setToolTip(self._suggestion.hint)
-            self._guide_btn.setEnabled(True)
-        else:
-            self._guide_btn.setText("Guide me")
-            self._guide_btn.setEnabled(False)
+        suggestion_key = (
+            self._suggestion.id if self._suggestion is not None else None,
+            self._suggestion.label if self._suggestion is not None else "",
+        )
+        if suggestion_key != self._suggestion_cache:
+            self._suggestion_cache = suggestion_key
+            if self._suggestion is not None:
+                self._guide_btn.setText(self._suggestion.label)
+                self._guide_btn.setToolTip(self._suggestion.hint)
+                self._guide_btn.setEnabled(True)
+            else:
+                self._guide_btn.setText("Guide me")
+                self._guide_btn.setEnabled(False)
 
         word = _status_word(analysis.score, doc)
-        self._score.setText(word)
-        self._score.setToolTip(f"Model score: {analysis.score}/100")
-        self._score.setStyleSheet(
-            f"QLabel {{ border-radius: 10px; padding: 6px 10px; font-weight: 700; color: white; "
-            f"background: {_score_color(analysis.score)}; }}"
+        under = bool(
+            doc
+            and any(
+                not sketch.helper
+                and sketch.geometry_count > 0
+                and not sketch.fully_constrained
+                for sketch in doc.sketches
+            )
         )
-
         if doc is None:
+            key = ("no-doc",)
+            if key == self._render_cache:
+                return
+            self._render_cache = key
+            self._score.setText(word)
+            self._score.setToolTip(f"Model score: {analysis.score}/100")
+            self._score.setStyleSheet(
+                f"QLabel#statusPill {{ border-radius: 13px; padding: 7px 12px; font-weight: 700; "
+                f"color: #080808; background: {_score_color(analysis.score)}; border: 1px solid rgba(255,255,255,0.18); }}"
+            )
+            self._fix_btn.setVisible(under)
             self._status.setText("No document yet. Start a new part when you are ready.")
             self._next.setText("Press Start a new part, then draw the outer profile.")
             self._render_empty()
             return
 
-        self._status.setText(self._status_line(snapshot))
-        self._next.setText(analysis.next_step)
-        self._next.setStyleSheet("font-weight: 600; color: #d64545;" if analysis.critical else "font-weight: 600;")
+        status_text = self._status_line(snapshot)
+        has_notes = bool(analysis.critical or analysis.warnings)
+        notes_html = self._simple_notes_html(analysis) if has_notes else ""
+        critical = bool(analysis.critical)
+        key = (
+            word,
+            analysis.score,
+            status_text,
+            analysis.next_step,
+            critical,
+            has_notes,
+            notes_html,
+            under,
+        )
+        if key == self._render_cache:
+            return
+        self._render_cache = key
 
-        color = SEVERITY_COLOR["critical"] if analysis.critical else "#ff7a18"
+        self._score.setText(word)
+        self._score.setToolTip(f"Model score: {analysis.score}/100")
+        color = _score_color(analysis.score)
+        self._score.setStyleSheet(
+            f"QLabel#statusPill {{ border-radius: 13px; padding: 7px 12px; font-weight: 700; "
+            f"color: #080808; background: {color}; border: 1px solid rgba(255,255,255,0.18); }}"
+        )
+        self._fix_btn.setVisible(under)
+
+        self._status.setText(status_text)
+        self._next.setText(analysis.next_step)
+        self._next.setStyleSheet("font-weight: 600; color: #d64545;" if critical else "font-weight: 600;")
+
+        color = SEVERITY_COLOR["critical"] if critical else "#ff7a18"
         frame = self.findChild(QtWidgets.QFrame, "nextStep")
         if frame is not None:
-            frame.setStyleSheet(
-                f"QFrame#nextStep {{ border-left: 3px solid {color}; background: palette(alternate-base); border-radius: 5px; }}"
-            )
+            frame.setStyleSheet(f"QFrame#nextStep {{ border-left: 3px solid {color}; }}")
 
-        has_notes = bool(analysis.critical or analysis.warnings)
         self._notes_label.setVisible(has_notes)
         self._simple_notes.setVisible(has_notes)
-        self._simple_notes.setHtml(self._simple_notes_html(analysis) if has_notes else "")
+        self._simple_notes.setHtml(notes_html)
         self._context.setHtml(self._context_html(snapshot, analysis))
         self._plan.setHtml(self._plan_html(analysis))
         self._review.setPlainText(coach.review_report(snapshot, analysis))
@@ -606,8 +853,9 @@ class MentorPanel(QtWidgets.QWidget):
                 )
             else:
                 parts.append(f"{body.label or body.name}: in progress")
-        if doc.sketches:
-            sketch = doc.sketches[-1]
+        user_sketches = [sketch for sketch in doc.sketches if not sketch.helper]
+        if user_sketches:
+            sketch = user_sketches[-1]
             if sketch.is_empty:
                 parts.append("empty sketch open")
             elif sketch.fully_constrained:
@@ -660,8 +908,6 @@ class MentorPanel(QtWidgets.QWidget):
             f"<b>Intent</b> | {_esc(analysis.intent.description)} "
             f"<span style='color:#888'>({analysis.intent.confidence:.0%})</span>"
         )
-        if doc.workbench:
-            rows.append(f"<b>Workbench</b> | {_esc(doc.workbench)}")
         if doc.edit_mode:
             rows.append(f"<b>Editing</b> | {_esc(doc.edit_mode)}")
         for body in doc.bodies[:2]:
@@ -669,7 +915,7 @@ class MentorPanel(QtWidgets.QWidget):
             if body.shape_valid and body.has_solid and not body.shape_closed:
                 status = "open shell"
             rows.append(f"<b>{_esc(body.label or body.name)}</b> | {body.feature_count} feature(s) | {status}")
-        for sketch in doc.sketches[:2]:
+        for sketch in [item for item in doc.sketches if not item.helper][:2]:
             state = "fully constrained" if sketch.fully_constrained else f"{sketch.dof} DoF"
             profile = "closed" if sketch.is_closed else f"{sketch.open_wires} open"
             rows.append(f"<b>{_esc(sketch.label or sketch.name)}</b> | {state} | {profile}")
@@ -693,9 +939,13 @@ class MentorPanel(QtWidgets.QWidget):
 
     def _render_footer(self) -> None:
         if settings.ai_ready(self._config):
-            self._footer.setText("Local-first. Paid AI explanations are active. The geometry review stays local.")
+            provider = settings.provider(self._config)
+            if provider == "ollama":
+                self._footer.setText("AI on · everything stays on this machine")
+            else:
+                self._footer.setText("AI on · question + compact model summary only")
         else:
-            self._footer.setText("Local-first. The coach is free. AI needs an active subscription.")
+            self._footer.setText("Local coach · free, no connection")
 
     def _append_activity(self, text: str, severity: str = "info", kind: str = "info") -> None:
         color = SEVERITY_COLOR.get(severity, "#888")
@@ -732,6 +982,20 @@ class MentorPanel(QtWidgets.QWidget):
         looks_like_question = "?" in text or lowered.startswith(
             ("how", "what", "why", "where", "when", "who", "can", "could", "should",
              "is", "are", "do", "does", "will", "would", "tell me", "show me")
+        ) or any(
+            phrase in lowered
+            for phrase in (
+                "guide me",
+                "help me",
+                "i'm stuck",
+                "im stuck",
+                "what next",
+                "what now",
+                "what do i do",
+                "show me where",
+                "which control",
+                "highlight",
+            )
         )
         if looks_like_question:
             self._ask()
@@ -746,8 +1010,9 @@ class MentorPanel(QtWidgets.QWidget):
         self._set_answer("You", question)
         self._append_activity(question, "info", "user")
 
-        if self._snapshot is None or self._analysis is None:
-            self._engine.force()
+        # Refresh once so the answer and the compact AI context see the
+        # current selection as well as the current geometry.
+        self._engine.force()
         snapshot = self._snapshot
         analysis = self._analysis
         if snapshot is None or analysis is None:
@@ -764,13 +1029,30 @@ class MentorPanel(QtWidgets.QWidget):
             self._engine.force()
             return
 
-        local_answer = coach.answer(question, snapshot, analysis)
+        local_answer = coach.answer(
+            question,
+            snapshot,
+            analysis,
+            simple_mode=bool(self._config.get("simple_mode", True)),
+        )
         if guide.looks_like_howto(question):
+            specific = _hint_targets(question)
             walkthrough = guide.walkthrough_for(question)
-            if walkthrough is not None:
+            if walkthrough is not None and not (
+                walkthrough.id == "constrain" and specific
+            ):
                 self._start_walkthrough(walkthrough)
+            elif specific:
+                # A concrete "how do I use Dimension/Arc/Radius/..." question:
+                # glow that exact control instead of starting the generic tour.
+                self._highlight_from_text(question)
+            elif walkthrough is None:
+                default = self._default_walkthrough()
+                if default is not None:
+                    self._start_walkthrough(default)
         if not settings.ai_ready(self._config):
             self._set_answer("LearnCad", local_answer)
+            self._highlight_from_text(local_answer)
             self._history.append({"role": "user", "content": question})
             self._history.append({"role": "assistant", "content": local_answer})
             self._history = self._history[-8:]
@@ -780,7 +1062,7 @@ class MentorPanel(QtWidgets.QWidget):
         self._ask_btn.setEnabled(False)
         self._ask_btn.setText("...")
         self._set_answer("LearnCad", "Thinking about your model...")
-        self._append_activity("Thinking with the built-in AI...", "info", "info")
+        self._append_activity("Thinking with the AI coach...", "info", "info")
         history = list(self._history[-8:])
         worker = _AskWorker(self._config, question, snapshot, analysis, self, history)
         worker.done.connect(lambda answer: self._on_ai_done(answer, local_answer, question))
@@ -791,8 +1073,9 @@ class MentorPanel(QtWidgets.QWidget):
 
     def _on_ai_done(self, answer: str, local_answer: str, question: str = "") -> None:
         self._ask_btn.setEnabled(True)
-        self._ask_btn.setText("Send")
+        self._ask_btn.setText("Ask")
         self._set_answer("LearnCad", answer)
+        self._highlight_from_text(answer)
         self._append_activity(answer, "good", "ai")
         if question:
             self._history.append({"role": "user", "content": question})
@@ -801,8 +1084,9 @@ class MentorPanel(QtWidgets.QWidget):
 
     def _on_ai_failed(self, error: str, local_answer: str, question: str = "") -> None:
         self._ask_btn.setEnabled(True)
-        self._ask_btn.setText("Send")
+        self._ask_btn.setText("Ask")
         self._set_answer("LearnCad", local_answer)
+        self._highlight_from_text(local_answer)
         self._append_activity(f"AI unavailable: {error}", "warn", "error")
         self._append_activity("Local mentor: " + local_answer, "info", "mentor")
         if question:
@@ -850,6 +1134,51 @@ class MentorPanel(QtWidgets.QWidget):
         self._append_activity("Guided walkthrough: " + walkthrough.title, "info", "guide")
         self._apply_walkthrough_step()
 
+    def _default_walkthrough(self):
+        """Pick a sensible walkthrough when the question has no keyword."""
+        snapshot = self._snapshot
+        doc = snapshot.doc if snapshot is not None else None
+        if doc is not None and doc.edit_mode:
+            active = None
+            for sketch in doc.sketches:
+                if doc.edit_mode in (sketch.name, sketch.label):
+                    active = sketch
+                    break
+            if active is not None and active.geometry_count == 0:
+                return guide.WALKTHROUGHS.get("rectangle")
+            return guide.WALKTHROUGHS.get("constrain")
+        body = doc.bodies[0] if doc is not None and doc.bodies else None
+        if body is None or not body.has_solid:
+            return guide.WALKTHROUGHS.get("rectangle")
+        return guide.WALKTHROUGHS.get("pad")
+
+    def _highlight_from_text(self, text: str) -> None:
+        """Glow the first control an answer tells the user to use."""
+        if self._walkthrough is not None:
+            return
+        for target in _hint_targets(text):
+            widget = self._find_target(target)
+            if widget is None:
+                continue
+            try:
+                if not widget.isVisible():
+                    continue
+            except Exception:
+                pass
+            self._highlight(widget)
+            self._clear_highlight_later(widget, 9000)
+            return
+
+    def _clear_highlight_later(self, widget, delay_ms: int = 9000) -> None:
+        def clear():
+            if self._highlighted is not None and self._highlighted[0] is widget:
+                self._clear_highlight()
+
+        try:
+            QtCore.QTimer.singleShot(delay_ms, clear)
+        except Exception:
+            pass
+
     def _apply_walkthrough_step(self) -> None:
         self._clear_highlight()
         if self._walkthrough is None:
@@ -866,16 +1195,46 @@ class MentorPanel(QtWidgets.QWidget):
             return
         widget = self._find_target(step.target)
         if widget is not None:
+            try:
+                visible = widget.isVisible()
+            except Exception:
+                visible = True
+            if not visible:
+                # The control exists but its toolbar is not on screen yet
+                # (for example the sketch bar before entering the sketch).
+                self._retry_visible(step.target, 0)
+                return
             self._highlight(widget)
             if not step.wait_for_sketch:
                 self._wire_target(widget)
         elif step.target.startswith("dialog:"):
             self._retry_dialog(step.target, 0)
 
+    def _retry_visible(self, target: str, attempt: int) -> None:
+        if self._walkthrough is None or self._walkthrough_index >= len(self._walkthrough_steps):
+            return
+        step = self._walkthrough_steps[self._walkthrough_index]
+        if step.target != target:
+            return
+        widget = self._find_target(target)
+        if widget is not None:
+            try:
+                visible = widget.isVisible()
+            except Exception:
+                visible = True
+            if visible:
+                self._highlight(widget)
+                if not step.wait_for_sketch:
+                    self._wire_target(widget)
+                return
+        if attempt < 12:
+            QtCore.QTimer.singleShot(300, lambda: self._retry_visible(target, attempt + 1))
+
     def _find_target(self, target: str):
         if target.startswith("panel:"):
             mapping = {
                 "primary": getattr(self, "_guide_btn", None),
+                "course": getattr(self, "_course_btn", None),
                 "studio": getattr(self, "_studio_btn", None),
                 "render": getattr(self, "_render_btn", None),
                 "setup": getattr(self, "_settings_btn", None),
@@ -903,12 +1262,65 @@ class MentorPanel(QtWidgets.QWidget):
                 bar = None
         if bar is None:
             return None
+        aliases = {
+            "horizontal": "horiz",
+            "vertical": "vert",
+            "dimension": "dim",
+            "diameter": "dim",
+        }
         wanted = name.replace("&", "").strip().lower()
+        wanted = aliases.get(wanted, wanted)
+
+        def norm(text: str) -> str:
+            return str(text or "").replace("&", "").strip().lower()
+
         for action in bar.actions():
             if action.isSeparator():
                 continue
-            if action.text().replace("&", "").strip().lower() == wanted:
+            if norm(action.text()) == wanted:
                 return bar.widgetForAction(action)
+        # Some targets live inside the File/Model/More menus. Highlight the
+        # menu button so the user can open it.
+        for button in bar.findChildren(QtWidgets.QToolButton):
+            menu = button.menu()
+            if menu is None:
+                continue
+            for action in menu.actions():
+                if norm(action.text()) == wanted:
+                    return button
+                submenu = action.menu()
+                if submenu is not None:
+                    for sub in submenu.actions():
+                        if norm(sub.text()) == wanted:
+                            return button
+        try:
+            menu = self._menu_btn.menu()
+            if menu is not None:
+                for action in menu.actions():
+                    if norm(action.text()) == wanted:
+                        return self._menu_btn
+        except Exception:
+            pass
+        # Fall back to a contains match so labels like "Render studio" still
+        # match a "render" hint.
+        if wanted:
+            for action in bar.actions():
+                if action.isSeparator():
+                    continue
+                if wanted in norm(action.text()):
+                    return bar.widgetForAction(action)
+            for button in bar.findChildren(QtWidgets.QToolButton):
+                menu = button.menu()
+                if menu is None:
+                    continue
+                for action in menu.actions():
+                    if wanted in norm(action.text()):
+                        return button
+                    submenu = action.menu()
+                    if submenu is not None:
+                        for sub in submenu.actions():
+                            if wanted in norm(sub.text()):
+                                return button
         return None
 
     def _find_dialog_button(self, name: str):
@@ -1026,6 +1438,7 @@ class MentorPanel(QtWidgets.QWidget):
         self._walkthrough_index += 1
         if self._walkthrough_index >= len(self._walkthrough_steps):
             title = self._walkthrough.title
+            self._finish_course_lesson()
             self._stop_walkthrough(announce=False)
             self._append_activity(
                 f"Guided walkthrough finished: {title}. Nice work.", "good", "guide"
@@ -1043,6 +1456,7 @@ class MentorPanel(QtWidgets.QWidget):
         self._walkthrough = None
         self._walkthrough_steps = []
         self._walkthrough_index = 0
+        self._course_lesson = None
         self._target_clicked = False
         try:
             self._guided_frame.setVisible(False)
@@ -1054,6 +1468,120 @@ class MentorPanel(QtWidgets.QWidget):
             pass
         if announce and was_active:
             self._append_activity("Guided walkthrough stopped.", "info", "guide")
+
+    def _course_completed(self) -> set[str]:
+        try:
+            data = settings.load()
+            return {str(item) for item in (data.get("course_progress") or [])}
+        except Exception:
+            return set()
+
+    def _load_installed_courses(self) -> None:
+        if not self._courses_dir:
+            return
+        try:
+            course.register_installed(course_package.load_installed(self._courses_dir))
+        except Exception:
+            pass
+
+    def _update_course_button(self) -> None:
+        try:
+            done = self._course_completed()
+            lessons = course.all_lessons()
+            total = len(lessons)
+            count = sum(1 for lesson in lessons if lesson.id in done)
+            if total and count >= total:
+                self._course_btn.setText("Courses \u00b7 complete \u2713")
+            else:
+                self._course_btn.setText(f"Courses \u00b7 {count} / {total}")
+        except Exception:
+            pass
+
+    def _open_course(self, *_args) -> None:
+        try:
+            self._load_installed_courses()
+            dialog = _CourseDialog(
+                course.all_courses(),
+                self._course_completed(),
+                self._start_lesson,
+                self._import_course,
+                self.window(),
+            )
+            dialog.exec()
+        except Exception as exc:
+            self._set_answer("LearnCad", "Could not open the course: " + str(exc))
+
+    def _import_course(self, *_args) -> bool:
+        if not self._courses_dir:
+            self._set_answer("LearnCad", "The LearnCad courses folder is not available.")
+            return False
+        path, _selected = QtWidgets.QFileDialog.getOpenFileName(
+            self.window(),
+            "Import LearnCad course",
+            "",
+            "LearnCad course (*.learncad)",
+        )
+        if not path:
+            return False
+        try:
+            manifest = course_package.install_package(path, self._courses_dir)
+            self._load_installed_courses()
+            self._update_course_button()
+            title = str(manifest.get("title") or manifest.get("id") or "course")
+            self._append_activity("Course imported: " + title, "good", "guide")
+            self._set_answer("LearnCad", "Imported " + title + ". Choose a lesson to start.")
+            QtCore.QTimer.singleShot(0, self._open_course)
+            return True
+        except course_package.CoursePackageError as exc:
+            self._set_answer(
+                "LearnCad",
+                "Could not import that course:\n" + "\n".join(exc.errors[:8]),
+            )
+            return False
+        except Exception as exc:
+            self._set_answer("LearnCad", "Could not import that course: " + str(exc))
+            return False
+
+    def _start_lesson(self, lesson_id: str) -> None:
+        lesson = course.lesson_by_id(lesson_id)
+        if lesson is None:
+            return
+        self._start_walkthrough(lesson.walkthrough)
+        if self._walkthrough is not None:
+            self._course_lesson = lesson.id
+            self._append_activity("Lesson started: " + lesson.title, "info", "guide")
+            self._set_answer("LearnCad", lesson.summary)
+
+    def _finish_course_lesson(self) -> None:
+        lesson_id = getattr(self, "_course_lesson", None)
+        if not lesson_id:
+            return
+        self._course_lesson = None
+        lesson = course.lesson_by_id(lesson_id)
+        try:
+            data = settings.load()
+            done = {str(item) for item in (data.get("course_progress") or [])}
+            if lesson_id not in done:
+                done.add(lesson_id)
+                data["course_progress"] = sorted(done)
+                settings.save(data)
+        except Exception:
+            pass
+        self._update_course_button()
+        if lesson is not None:
+            self._append_activity(
+                "Lesson complete: " + lesson.title + ". Open Courses to continue.",
+                "good",
+                "guide",
+            )
+
+    def _open_all_tools(self, *_args) -> None:
+        try:
+            from . import simple_mode
+
+            simple_mode.show_all_tools(self)
+        except Exception:
+            pass
 
     def _toggle_tools(self, *_args) -> None:
         dock = getattr(self, "_inspector_dock", None)
@@ -1214,7 +1742,7 @@ class _ToolsPage(QtWidgets.QWidget):
             ("Hole", self._hole, False),
             ("Shell", self._shell, False),
             ("Fillet", self._fillet, False),
-            ("Fix constraints", self._fix_constraints, False),
+            ("Auto-constrain", self._fix_constraints, False),
             ("Export", self._export, False),
             ("Render", self._render, False),
             ("Studio", self._studio, False),
@@ -1396,6 +1924,16 @@ def _sketch_geometry_count(sketch) -> int:
         return int(getattr(sketch, "GeometryCount", 0) or 0)
     except Exception:
         return 0
+
+
+def _sketch_has_curve(sketch) -> bool:
+    try:
+        for geometry in sketch.Geometry:
+            if hasattr(geometry, "Radius"):
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def _last_sketch(sketches):
@@ -1610,6 +2148,546 @@ def show_pad_dialog(parent=None) -> bool:
     return True
 
 
+class _FeatureDialog(QtWidgets.QDialog):
+    """Small native LearnCad dialog, so we never need the engine task bar."""
+
+    def __init__(self, title: str, intro: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setMinimumWidth(360)
+        layout = QtWidgets.QVBoxLayout(self)
+        label = QtWidgets.QLabel(intro)
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        self._form = QtWidgets.QFormLayout()
+        layout.addLayout(self._form)
+        self._widgets: dict[str, Any] = {}
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def add_float(self, key: str, label: str, default: float, minimum: float = 0.1,
+                  maximum: float = 1000.0, suffix: str = " mm") -> None:
+        spin = QtWidgets.QDoubleSpinBox()
+        spin.setRange(minimum, maximum)
+        spin.setDecimals(2)
+        spin.setSingleStep(1.0)
+        spin.setValue(default)
+        spin.setSuffix(suffix)
+        self._form.addRow(label, spin)
+        self._widgets[key] = spin
+
+    def add_bool(self, key: str, label: str, default: bool = False) -> None:
+        check = QtWidgets.QCheckBox(label)
+        check.setChecked(default)
+        self._form.addRow("", check)
+        self._widgets[key] = check
+
+    def values(self) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, widget in self._widgets.items():
+            if isinstance(widget, QtWidgets.QCheckBox):
+                result[key] = widget.isChecked()
+            else:
+                result[key] = float(widget.value())
+        return result
+
+
+def _selected_face(target: str = "Face"):
+    try:
+        import FreeCADGui as Gui
+
+        for selection in Gui.Selection.getSelectionEx():
+            obj = getattr(selection, "Object", None)
+            names = getattr(selection, "SubElementNames", None) or []
+            for name in names:
+                if str(name).startswith(target):
+                    return obj, str(name)
+    except Exception:
+        pass
+    return None, ""
+
+
+def _selected_edges():
+    try:
+        import FreeCADGui as Gui
+
+        for selection in Gui.Selection.getSelectionEx():
+            obj = getattr(selection, "Object", None)
+            names = [
+                str(name)
+                for name in (getattr(selection, "SubElementNames", None) or [])
+                if str(name).startswith("Edge")
+            ]
+            if names:
+                return obj, names
+    except Exception:
+        pass
+    return None, []
+
+
+def _selected_faces():
+    try:
+        import FreeCADGui as Gui
+
+        for selection in Gui.Selection.getSelectionEx():
+            obj = getattr(selection, "Object", None)
+            names = [
+                str(name)
+                for name in (getattr(selection, "SubElementNames", None) or [])
+                if str(name).startswith("Face")
+            ]
+            if names:
+                return obj, names
+    except Exception:
+        pass
+    return None, []
+
+
+def _top_face_name(feature) -> str:
+    try:
+        faces = list(feature.Shape.Faces)
+    except Exception:
+        return ""
+    best_name = ""
+    best = (-2.0, -1e9)
+    for index, face in enumerate(faces):
+        try:
+            score = (face.normalAt(0, 0).z, face.BoundBox.ZMax)
+        except Exception:
+            continue
+        if score > best:
+            best = score
+            best_name = f"Face{index + 1}"
+    return best_name
+
+
+def _feature_ready(feature) -> tuple[bool, str]:
+    state = " ".join(str(value) for value in (getattr(feature, "State", []) or [])).lower()
+    shape = getattr(feature, "Shape", None)
+    volume = 0.0
+    try:
+        if shape is not None and not shape.isNull():
+            volume = float(shape.Volume)
+    except Exception:
+        volume = 0.0
+    if "invalid" in state or "error" in state or volume <= 0:
+        return False, "The feature produced an empty or invalid solid."
+    return True, ""
+
+
+def _shape_volume(obj) -> float:
+    try:
+        shape = getattr(obj, "Shape", None)
+        if shape is not None and not shape.isNull():
+            return float(shape.Volume)
+    except Exception:
+        pass
+    return 0.0
+
+
+def _rollback_feature(body, previous_tip, feature) -> None:
+    try:
+        import FreeCAD as App
+
+        if previous_tip is not None:
+            body.Tip = previous_tip
+        if feature is not None:
+            App.ActiveDocument.removeObject(feature.Name)
+        App.ActiveDocument.recompute()
+    except Exception:
+        pass
+
+
+def _finish_feature(
+    parent,
+    body,
+    previous_tip,
+    feature,
+    title: str,
+    require_change: bool = False,
+    failure_hint: str = "",
+) -> bool:
+    previous_volume = _shape_volume(previous_tip) if previous_tip is not None else 0.0
+    try:
+        body.Tip = feature
+    except Exception:
+        pass
+    try:
+        import FreeCAD as App
+
+        App.ActiveDocument.recompute()
+    except Exception:
+        pass
+    ok, message = _feature_ready(feature)
+    if ok and require_change:
+        volume = _shape_volume(feature)
+        if previous_volume > 0 and previous_volume - volume <= max(0.5, previous_volume * 0.0005):
+            ok = False
+            message = "The feature did not remove any material on this shape."
+    if not ok:
+        _rollback_feature(body, previous_tip, feature)
+        if failure_hint:
+            message = message + "\n\n" + failure_hint
+        QtWidgets.QMessageBox.warning(parent, title + " failed", message)
+        return False
+    try:
+        import FreeCADGui as Gui
+
+        gdoc = Gui.activeDocument()
+        if gdoc is not None and gdoc.activeView() is not None:
+            gdoc.activeView().fitAll()
+    except Exception:
+        pass
+    return True
+
+
+def _leave_sketch() -> None:
+    try:
+        import FreeCADGui as Gui
+
+        gdoc = Gui.activeDocument()
+        if gdoc is not None and gdoc.getInEdit() is not None:
+            Gui.runCommand("Sketcher_LeaveSketch")
+    except Exception:
+        pass
+
+
+def show_pocket_dialog(parent=None) -> bool:
+    import FreeCAD as App
+    import FreeCADGui as Gui
+
+    from . import actions
+
+    doc = App.ActiveDocument
+    if doc is None:
+        QtWidgets.QMessageBox.information(parent, "Pocket", "Create a body and sketch first.")
+        return False
+    body = actions._selected_body() or actions._active_body() or actions._first_body(doc)
+    if body is None:
+        QtWidgets.QMessageBox.information(parent, "Pocket", "No Body found.")
+        return False
+    sketch = None
+    try:
+        edit = Gui.activeDocument().getInEdit() if Gui.activeDocument() else None
+        if isinstance(edit, (tuple, list)):
+            edit = edit[0] if edit else None
+        obj = getattr(edit, "Object", edit)
+        if obj is not None and str(getattr(obj, "TypeId", "")) == "Sketcher::SketchObject":
+            sketch = obj
+    except Exception:
+        pass
+    if sketch is None:
+        for selection in Gui.Selection.getSelectionEx():
+            obj = getattr(selection, "Object", None)
+            if obj is not None and str(getattr(obj, "TypeId", "")) == "Sketcher::SketchObject":
+                sketch = obj
+                break
+    if sketch is None:
+        sketch = _last_sketch(list(getattr(body, "Group", []) or []))
+    if sketch is None:
+        QtWidgets.QMessageBox.information(parent, "Pocket", "Select or draw the pocket sketch first.")
+        return False
+    label = str(getattr(sketch, "Label", None) or getattr(sketch, "Name", "Sketch"))
+    dialog = _FeatureDialog(
+        "Pocket",
+        "Cut '" + label + "' into the current solid. The pocket goes into the material.",
+        parent,
+    )
+    dialog.add_float("length", "Depth", 5.0)
+    dialog.add_bool("through", "Through all", False)
+    if dialog.exec() != QtWidgets.QDialog.Accepted:
+        return False
+    values = dialog.values()
+    _leave_sketch()
+    try:
+        doc.recompute()
+    except Exception:
+        pass
+    previous_tip = getattr(body, "Tip", None)
+    pocket = None
+    try:
+        actions._activate_body(body)
+        pocket = body.newObject("PartDesign::Pocket", "Pocket")
+        pocket.Profile = sketch
+        if values.get("through"):
+            try:
+                pocket.Type = "ThroughAll"
+            except Exception:
+                pocket.Type = "Length"
+                pocket.Length = 1000.0
+        else:
+            pocket.Type = "Length"
+            pocket.Length = float(values.get("length", 5.0))
+        return _finish_feature(parent, body, previous_tip, pocket, "Pocket", require_change=True)
+    except Exception as exc:
+        if pocket is not None:
+            try:
+                if previous_tip is not None:
+                    body.Tip = previous_tip
+                doc.removeObject(pocket.Name)
+                doc.recompute()
+            except Exception:
+                pass
+        QtWidgets.QMessageBox.warning(parent, "Pocket failed", str(exc))
+        return False
+
+
+def show_hole_dialog(parent=None) -> bool:
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    import Part
+
+    from . import actions
+
+    doc = App.ActiveDocument
+    if doc is None:
+        QtWidgets.QMessageBox.information(parent, "Hole", "Create a body and sketch first.")
+        return False
+    body = actions._selected_body() or actions._active_body() or actions._first_body(doc)
+    if body is None:
+        QtWidgets.QMessageBox.information(parent, "Hole", "No Body found.")
+        return False
+    tip = getattr(body, "Tip", None)
+    if tip is None:
+        QtWidgets.QMessageBox.information(parent, "Hole", "Create a solid first, then add a hole.")
+        return False
+
+    profile = None
+    try:
+        edit = Gui.activeDocument().getInEdit() if Gui.activeDocument() else None
+        if isinstance(edit, (tuple, list)):
+            edit = edit[0] if edit else None
+        obj = getattr(edit, "Object", edit)
+        if obj is not None and str(getattr(obj, "TypeId", "")) == "Sketcher::SketchObject":
+            profile = obj
+    except Exception:
+        pass
+    if profile is None:
+        for selection in Gui.Selection.getSelectionEx():
+            obj = getattr(selection, "Object", None)
+            if obj is not None and str(getattr(obj, "TypeId", "")) == "Sketcher::SketchObject":
+                profile = obj
+                break
+    # Only a sketch of circles/arcs can drive a Hole. A selected rectangle
+    # sketch would otherwise make the feature fail with "Finding axis failed".
+    if profile is not None and not _sketch_has_curve(profile):
+        profile = None
+
+    target, face_name = _selected_face()
+    if target is None or face_name == "":
+        face_name = _top_face_name(tip)
+        target = tip
+    if target is None or face_name == "":
+        QtWidgets.QMessageBox.information(
+            parent, "Hole", "Select the face where the hole should start."
+        )
+        return False
+
+    dialog = _FeatureDialog(
+        "Hole",
+        "Add a vertical hole. With a sketch of circles selected that sketch is used; "
+        "otherwise I place one circle at the center of the selected face.",
+        parent,
+    )
+    dialog.add_float("diameter", "Diameter", 3.4)
+    dialog.add_float("depth", "Depth", 10.0)
+    dialog.add_bool("through", "Through all", False)
+    if dialog.exec() != QtWidgets.QDialog.Accepted:
+        return False
+    values = dialog.values()
+    diameter = float(values.get("diameter", 3.4))
+    _leave_sketch()
+
+    previous_tip = getattr(body, "Tip", None)
+    created_sketch = None
+    hole = None
+    try:
+        actions._activate_body(body)
+        if profile is None:
+            created_sketch = body.newObject("Sketcher::SketchObject", "HoleSketch")
+            created_sketch.AttachmentSupport = [(target, face_name)]
+            created_sketch.MapMode = "FlatFace"
+            try:
+                created_sketch.addProperty(
+                    "App::PropertyBool",
+                    "LearnCadHelper",
+                    "Base",
+                    "Internal LearnCad helper geometry",
+                )
+                created_sketch.LearnCadHelper = True
+            except Exception:
+                pass
+            doc.recompute()
+            face = target.Shape.getElement(face_name)
+            local = created_sketch.Placement.inverse().multVec(face.CenterOfMass)
+            created_sketch.addGeometry(
+                Part.Circle(local, App.Vector(0, 0, 1), diameter / 2.0), False
+            )
+            doc.recompute()
+            try:
+                created_sketch.ViewObject.Visibility = False
+            except Exception:
+                pass
+            profile = created_sketch
+        hole = body.newObject("PartDesign::Hole", "Hole")
+        hole.Profile = profile
+        hole.Diameter = diameter
+        if values.get("through"):
+            hole.DepthType = "ThroughAll"
+        else:
+            hole.DepthType = "Dimension"
+            hole.Depth = float(values.get("depth", 10.0))
+        return _finish_feature(parent, body, previous_tip, hole, "Hole", require_change=True)
+    except Exception as exc:
+        if hole is not None:
+            try:
+                if previous_tip is not None:
+                    body.Tip = previous_tip
+                doc.removeObject(hole.Name)
+            except Exception:
+                pass
+        if created_sketch is not None:
+            try:
+                doc.removeObject(created_sketch.Name)
+            except Exception:
+                pass
+        try:
+            doc.recompute()
+        except Exception:
+            pass
+        QtWidgets.QMessageBox.warning(parent, "Hole failed", str(exc))
+        return False
+
+
+def show_fillet_dialog(parent=None) -> bool:
+    import FreeCAD as App
+
+    from . import actions
+
+    doc = App.ActiveDocument
+    if doc is None:
+        QtWidgets.QMessageBox.information(parent, "Fillet", "Create a solid first.")
+        return False
+    body = actions._selected_body() or actions._active_body() or actions._first_body(doc)
+    if body is None:
+        QtWidgets.QMessageBox.information(parent, "Fillet", "No Body found.")
+        return False
+    target, edges = _selected_edges()
+    if target is None or not edges:
+        QtWidgets.QMessageBox.information(
+            parent,
+            "Fillet",
+            "Select one or more edges in the 3D view, then click Fillet.",
+        )
+        return False
+    if str(getattr(target, "TypeId", "")) == "PartDesign::Body":
+        target = getattr(body, "Tip", None)
+    if target is None:
+        QtWidgets.QMessageBox.information(parent, "Fillet", "No solid to round yet.")
+        return False
+
+    dialog = _FeatureDialog("Fillet", "Round the selected edges. Keep it small.", parent)
+    dialog.add_float("radius", "Radius", 1.0, minimum=0.05, maximum=100.0)
+    if dialog.exec() != QtWidgets.QDialog.Accepted:
+        return False
+    radius = float(dialog.values().get("radius", 1.0))
+
+    previous_tip = getattr(body, "Tip", None)
+    feature = None
+    try:
+        actions._activate_body(body)
+        feature = body.newObject("PartDesign::Fillet", "Fillet")
+        feature.Base = (target, edges)
+        feature.Radius = radius
+        return _finish_feature(parent, body, previous_tip, feature, "Fillet")
+    except Exception as exc:
+        if feature is not None:
+            try:
+                if previous_tip is not None:
+                    body.Tip = previous_tip
+                doc.removeObject(feature.Name)
+                doc.recompute()
+            except Exception:
+                pass
+        QtWidgets.QMessageBox.warning(parent, "Fillet failed", str(exc))
+        return False
+
+
+def show_thickness_dialog(parent=None) -> bool:
+    import FreeCAD as App
+
+    from . import actions
+
+    doc = App.ActiveDocument
+    if doc is None:
+        QtWidgets.QMessageBox.information(parent, "Shell", "Create a solid first.")
+        return False
+    body = actions._selected_body() or actions._active_body() or actions._first_body(doc)
+    if body is None:
+        QtWidgets.QMessageBox.information(parent, "Shell", "No Body found.")
+        return False
+    target, faces = _selected_faces()
+    if target is None or not faces:
+        tip = getattr(body, "Tip", None)
+        face = _top_face_name(tip) if tip is not None else ""
+        if not face:
+            QtWidgets.QMessageBox.information(
+                parent, "Shell", "Select the face(s) to open, then click Shell."
+            )
+            return False
+        target = tip
+        faces = [face]
+    if str(getattr(target, "TypeId", "")) == "PartDesign::Body":
+        target = getattr(body, "Tip", None)
+    if target is None:
+        QtWidgets.QMessageBox.information(parent, "Shell", "No solid to hollow yet.")
+        return False
+
+    dialog = _FeatureDialog(
+        "Shell", "Hollow the solid and remove the selected face(s).", parent
+    )
+    dialog.add_float("value", "Wall thickness", 1.5, minimum=0.1, maximum=100.0)
+    if dialog.exec() != QtWidgets.QDialog.Accepted:
+        return False
+    value = float(dialog.values().get("value", 1.5))
+
+    previous_tip = getattr(body, "Tip", None)
+    feature = None
+    try:
+        actions._activate_body(body)
+        feature = body.newObject("PartDesign::Thickness", "Thickness")
+        feature.Base = (target, faces)
+        feature.Value = value
+        try:
+            feature.Mode = "Skin"
+        except Exception:
+            pass
+        return _finish_feature(
+            parent,
+            body,
+            previous_tip,
+            feature,
+            "Shell",
+            require_change=True,
+            failure_hint="Shell works best before Fillet or Pocket. Try a different face, or undo the last feature and shell first.",
+        )
+    except Exception as exc:
+        if feature is not None:
+            try:
+                if previous_tip is not None:
+                    body.Tip = previous_tip
+                doc.removeObject(feature.Name)
+                doc.recompute()
+            except Exception:
+                pass
+        QtWidgets.QMessageBox.warning(parent, "Shell failed", str(exc))
+        return False
+
+
 class _SettingsDialog(QtWidgets.QDialog):
     def __init__(self, config: dict[str, Any], parent=None):
         super().__init__(parent)
@@ -1620,46 +2698,82 @@ class _SettingsDialog(QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout(self)
         intro = QtWidgets.QLabel(
-            "The mentor always runs locally and stays free. AI explanations are a paid add-on: "
-            "only a compact model summary and your question are sent to the LearnCad AI server."
+            "The coach always runs locally and stays free. AI explanations are optional. "
+            "Use DeepSeek V4.1 Flash, your own OpenAI-compatible key, a free local Ollama "
+            "model, or a LearnCad subscription."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
-        self._simple = QtWidgets.QCheckBox("Simple mode: hide advanced toolbars, menus, and the workbench selector")
+        self._simple = QtWidgets.QCheckBox("Simple mode: hide advanced toolbars and menus")
         self._simple.setChecked(bool(self._config.get("simple_mode", True)))
         layout.addWidget(self._simple)
 
-        ai_box = QtWidgets.QGroupBox("LearnCad AI subscription")
+        ai_box = QtWidgets.QGroupBox("AI coach")
         ai_form = QtWidgets.QFormLayout(ai_box)
         self._ai_status = QtWidgets.QLabel("")
         self._ai_status.setWordWrap(True)
         ai_form.addRow("Status", self._ai_status)
 
-        self._enabled = QtWidgets.QCheckBox("Enable paid AI explanations")
+        self._enabled = QtWidgets.QCheckBox("Enable AI explanations")
         self._enabled.setChecked(bool(self._config.get("ai_enabled")))
         ai_form.addRow("AI", self._enabled)
 
-        self._consent = QtWidgets.QCheckBox("I agree to send the model summary and question to the LearnCad AI server")
+        self._provider = QtWidgets.QComboBox()
+        self._provider.addItem("LearnCad cloud (subscription)", "learncad")
+        self._provider.addItem("DeepSeek (V4.1 Flash)", "deepseek")
+        self._provider.addItem("OpenAI or compatible API key", "openai")
+        self._provider.addItem("Ollama on this computer (local, free)", "ollama")
+        self._provider.addItem("Custom OpenAI-compatible server", "custom")
+        current_provider = settings.provider(self._config)
+        provider_index = self._provider.findData(current_provider)
+        if provider_index >= 0:
+            self._provider.setCurrentIndex(provider_index)
+        self._provider.currentIndexChanged.connect(self._provider_changed)
+        ai_form.addRow("Provider", self._provider)
+
+        self._consent = QtWidgets.QCheckBox(
+            "I agree to send a compact model summary and my question to the selected provider"
+        )
         self._consent.setChecked(bool(self._config.get("consent_ai")))
         ai_form.addRow("Privacy", self._consent)
+        layout.addWidget(ai_box)
 
+        self._direct_box = QtWidgets.QGroupBox("API connection")
+        direct_form = QtWidgets.QFormLayout(self._direct_box)
+        self._direct_base = QtWidgets.QLineEdit(str(self._config.get("direct_base_url", "")))
+        self._direct_base.setPlaceholderText("https://api.openai.com/v1")
+        direct_form.addRow("Base URL", self._direct_base)
+        self._direct_model = QtWidgets.QLineEdit(str(self._config.get("direct_model", "")))
+        self._direct_model.setPlaceholderText("gpt-4o-mini")
+        direct_form.addRow("Model", self._direct_model)
+        self._direct_key = QtWidgets.QLineEdit()
+        self._direct_key.setEchoMode(QtWidgets.QLineEdit.Password)
+        saved_key = settings.get_direct_api_key(self._config)
+        self._direct_key.setPlaceholderText(
+            "Saved key is kept. Type a new key to replace it." if saved_key else "sk-... (not needed for Ollama)"
+        )
+        direct_form.addRow("API key", self._direct_key)
+        layout.addWidget(self._direct_box)
+
+        self._sub_box = QtWidgets.QGroupBox("LearnCad cloud subscription")
+        sub_form = QtWidgets.QFormLayout(self._sub_box)
         self._base = QtWidgets.QLineEdit(str(self._config.get("cloud_base_url", "")))
         self._base.setPlaceholderText("https://ai.your-server.example")
-        ai_form.addRow("AI server", self._base)
+        sub_form.addRow("Server", self._base)
 
         self._subscribe_url = QtWidgets.QLineEdit(str(self._config.get("subscribe_url", "")))
         self._subscribe_url.setPlaceholderText("https://your-server.example/subscribe")
-        ai_form.addRow("Subscribe page", self._subscribe_url)
+        sub_form.addRow("Subscribe page", self._subscribe_url)
 
         self._email = QtWidgets.QLineEdit(str(self._config.get("license_email", "")))
         self._email.setPlaceholderText("you@example.com")
-        ai_form.addRow("Email", self._email)
+        sub_form.addRow("Email", self._email)
 
         self._license = QtWidgets.QLineEdit()
         self._license.setEchoMode(QtWidgets.QLineEdit.Password)
         self._license.setPlaceholderText("License code from your email")
-        ai_form.addRow("License code", self._license)
+        sub_form.addRow("License code", self._license)
 
         ai_buttons = QtWidgets.QHBoxLayout()
         self._activate = QtWidgets.QPushButton("Activate")
@@ -1669,16 +2783,18 @@ class _SettingsDialog(QtWidgets.QDialog):
         ai_buttons.addWidget(self._activate)
         ai_buttons.addWidget(self._subscribe)
         ai_buttons.addStretch(1)
-        ai_form.addRow("", ai_buttons)
-        layout.addWidget(ai_box)
+        sub_form.addRow("", ai_buttons)
+        layout.addWidget(self._sub_box)
 
         ai_hint = QtWidgets.QLabel(
-            "Subscribe on the web page, then enter the email and license code from the confirmation message. "
-            "The token is stored locally; the language-model key stays on the server."
+            "Your key is stored encrypted on this computer (Windows DPAPI) and is only sent to the provider you choose. "
+            "Ollama runs locally, so nothing leaves your machine."
         )
         ai_hint.setWordWrap(True)
         ai_hint.setStyleSheet("color: #888; font-size: 10px;")
         layout.addWidget(ai_hint)
+        self._direct_box.setVisible(current_provider != "learncad")
+        self._sub_box.setVisible(current_provider == "learncad")
 
         form = QtWidgets.QFormLayout()
         self._poll = QtWidgets.QSpinBox()
@@ -1763,12 +2879,12 @@ class _SettingsDialog(QtWidgets.QDialog):
         note.setStyleSheet("color: #888; font-size: 10px;")
         layout.addWidget(note)
 
-        storage = QtWidgets.QLabel(f"Access token storage: {secret_store.storage_description()}")
+        storage = QtWidgets.QLabel(f"Secret storage: {secret_store.storage_description()}")
         storage.setStyleSheet("color: #888; font-size: 10px;")
         layout.addWidget(storage)
 
         test_row = QtWidgets.QHBoxLayout()
-        self._test = QtWidgets.QPushButton("Check subscription")
+        self._test = QtWidgets.QPushButton("Test AI connection")
         self._test.clicked.connect(self._test_connection)
         self._test_status = QtWidgets.QLabel("")
         self._test_status.setWordWrap(True)
@@ -1783,7 +2899,35 @@ class _SettingsDialog(QtWidgets.QDialog):
 
         self._update_ai_status()
 
+    def _provider_changed(self, *_args) -> None:
+        provider = self._provider.currentData() or "learncad"
+        if provider != "learncad":
+            default_base, default_model = settings.PROVIDER_DEFAULTS.get(provider, ("", ""))
+            known_bases = {value[0] for value in settings.PROVIDER_DEFAULTS.values() if value[0]}
+            known_models = {value[1] for value in settings.PROVIDER_DEFAULTS.values() if value[1]}
+            base = self._direct_base.text().strip()
+            if not base or base in known_bases:
+                self._direct_base.setText(default_base)
+            model = self._direct_model.text().strip()
+            if not model or model in known_models:
+                self._direct_model.setText(default_model)
+            self._direct_key.setEnabled(provider != "ollama")
+        self._direct_box.setVisible(provider != "learncad")
+        self._sub_box.setVisible(provider == "learncad")
+        self._update_ai_status()
+
     def _update_ai_status(self) -> None:
+        provider = self._provider.currentData() or "learncad"
+        if provider != "learncad":
+            if settings.direct_ready(self._pending_config()):
+                text = "Ready to use " + str(self._direct_model.text().strip()) + "."
+                color = SEVERITY_COLOR["good"]
+            else:
+                text = "Add the base URL, model, and API key (Ollama needs no key)."
+                color = SEVERITY_COLOR["warn"]
+            self._ai_status.setText(text)
+            self._ai_status.setStyleSheet(f"color: {color};")
+            return
         token = settings.get_license_token(self._config)
         expires = settings.license_expires_at(self._config)
         if not token:
@@ -1845,13 +2989,17 @@ class _SettingsDialog(QtWidgets.QDialog):
         settings.set_license_code(self._config, code)
         settings.set_license_token(self._config, token)
         self._config["license_expires"] = str(result.get("expires_at", "") or "")
+        self._config["ai_provider"] = "learncad"
         self._license.clear()
         self._enabled.setChecked(True)
+        index = self._provider.findData("learncad")
+        if index >= 0:
+            self._provider.setCurrentIndex(index)
         try:
             settings.save(self._config)
         except Exception:
             pass
-        self._update_ai_status()
+        self._provider_changed()
         self._test_status.setText("Activated. Tick Privacy, then Save.")
         self._test_status.setStyleSheet(f"color: {SEVERITY_COLOR['good']};")
 
@@ -1872,9 +3020,14 @@ class _SettingsDialog(QtWidgets.QDialog):
         data = dict(self._config)
         data["ai_enabled"] = self._enabled.isChecked()
         data["consent_ai"] = self._consent.isChecked()
+        data["ai_provider"] = self._provider.currentData() or "learncad"
         data["cloud_base_url"] = self._base.text().strip()
         data["subscribe_url"] = self._subscribe_url.text().strip()
         data["license_email"] = self._email.text().strip()
+        data["direct_base_url"] = self._direct_base.text().strip()
+        data["direct_model"] = self._direct_model.text().strip()
+        if self._direct_key.text().strip():
+            settings.set_direct_api_key(data, self._direct_key.text().strip())
         if self._license.text().strip():
             settings.set_license_code(data, self._license.text().strip())
         settings.device_id(data)
@@ -1902,16 +3055,31 @@ class _SettingsDialog(QtWidgets.QDialog):
 
     def _test_connection(self) -> None:
         data = self._pending_config()
-        if not data.get("cloud_base_url"):
-            self._test_status.setText("Set the AI server URL first.")
-            self._test_status.setStyleSheet(f"color: {SEVERITY_COLOR['warn']};")
-            return
-        if not settings.get_license_token(data):
-            self._test_status.setText("Activate a subscription first.")
-            self._test_status.setStyleSheet(f"color: {SEVERITY_COLOR['warn']};")
-            return
+        provider = settings.provider(data)
+        if provider == "learncad":
+            if not data.get("cloud_base_url"):
+                self._test_status.setText("Set the AI server URL first.")
+                self._test_status.setStyleSheet(f"color: {SEVERITY_COLOR['warn']};")
+                return
+            if not settings.get_license_token(data):
+                self._test_status.setText("Activate a subscription first.")
+                self._test_status.setStyleSheet(f"color: {SEVERITY_COLOR['warn']};")
+                return
+        else:
+            if not data.get("direct_base_url"):
+                self._test_status.setText("Set the provider base URL first.")
+                self._test_status.setStyleSheet(f"color: {SEVERITY_COLOR['warn']};")
+                return
+            if not data.get("direct_model"):
+                self._test_status.setText("Set the provider model first.")
+                self._test_status.setStyleSheet(f"color: {SEVERITY_COLOR['warn']};")
+                return
+            if provider in ("openai", "deepseek", "custom") and not settings.get_direct_api_key(data):
+                self._test_status.setText("Add the provider API key first.")
+                self._test_status.setStyleSheet(f"color: {SEVERITY_COLOR['warn']};")
+                return
         self._test.setEnabled(False)
-        self._test_status.setText("Checking subscription...")
+        self._test_status.setText("Testing connection...")
         self._test_status.setStyleSheet("color: #888;")
         worker = _TestWorker(data, self)
         worker.done.connect(self._on_test_done)
@@ -1930,16 +3098,21 @@ class _SettingsDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(
                 self,
                 "Consent required",
-                "Tick the privacy note before enabling paid AI explanations.",
+                "Tick the privacy note before enabling AI explanations.",
             )
             return
-        if data["ai_enabled"] and not settings.license_active(data):
-            QtWidgets.QMessageBox.warning(
-                self,
-                "Subscription required",
-                "Activate a subscription with your email and license code, or turn AI off. "
-                "The local mentor stays free.",
-            )
+        if data["ai_enabled"] and not settings.ai_ready(data):
+            if settings.provider(data) == "learncad":
+                message = (
+                    "Activate a LearnCad subscription with your email and license code, "
+                    "or choose another AI provider. The local coach stays free."
+                )
+            else:
+                message = (
+                    "Complete the API connection: base URL, model, and API key "
+                    "(Ollama needs no key). The local coach stays free."
+                )
+            QtWidgets.QMessageBox.warning(self, "AI not ready", message)
             return
         self._config = data
         try:
@@ -1967,6 +3140,88 @@ def _size_dock(main_window, dock, final: bool = False) -> None:
     except Exception:
         pass
 
+
+
+_TASK_DOCK_ALLOWED = False
+
+
+def allow_task_dock() -> None:
+    """Allow the native task dock for an advanced tool the user asked for."""
+    global _TASK_DOCK_ALLOWED
+    _TASK_DOCK_ALLOWED = True
+
+
+def _task_is_active() -> bool:
+    """True only while a real engine task dialog is open."""
+    try:
+        import FreeCADGui as Gui
+
+        return bool(Gui.Control.activeDialog())
+    except Exception:
+        return False
+
+
+def force_ui_idle() -> bool:
+    """False while the user is dragging, orbiting or a modal dialog is open."""
+    try:
+        if QtWidgets.QApplication.mouseButtons() != QtCore.Qt.NoButton:
+            return False
+        if blocking_modal() is not None:
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _install_task_watch(main_window, task_dock, coach_dock) -> None:
+    """Keep the engine task bar completely out of the way.
+
+    LearnCad now owns sketch creation, dimensions, Pad, Pocket, Hole, Fillet
+    and Shell, so the native dock is never needed. It is forced to the left
+    and hidden on a fast timer in case the engine re-shows it.
+    """
+
+    def sync() -> None:
+        global _TASK_DOCK_ALLOWED
+        try:
+            if not force_ui_idle():
+                return
+        except Exception:
+            pass
+        try:
+            if not settings.simple_mode_enabled():
+                return
+        except Exception:
+            pass
+        active = _task_is_active()
+        if not active:
+            _TASK_DOCK_ALLOWED = False
+        if _TASK_DOCK_ALLOWED and active:
+            try:
+                if main_window.dockWidgetArea(task_dock) == QtCore.Qt.NoDockWidgetArea:
+                    main_window.addDockWidget(QtCore.Qt.LeftDockWidgetArea, task_dock)
+                task_dock.show()
+                task_dock.raise_()
+            except Exception:
+                pass
+            return
+        # Hide only. Detaching and re-adding the dock on every tick makes it
+        # jump between sides, which looked like the task bar "popping up".
+        try:
+            if task_dock.isVisible():
+                task_dock.hide()
+        except Exception:
+            pass
+
+    try:
+        timer = QtCore.QTimer(task_dock)
+        timer.setInterval(250)
+        timer.timeout.connect(sync)
+        timer.start()
+        task_dock._learncad_watch = timer
+    except Exception:
+        pass
+    QtCore.QTimer.singleShot(200, sync)
 
 
 def show_panel() -> QtWidgets.QDockWidget:
@@ -2000,14 +3255,15 @@ def show_panel() -> QtWidgets.QDockWidget:
         dock.setMaximumWidth(380)
         _DOCK = dock
 
-        # The engine's parameters live in a hidden Task tab. The visible TOOL
-        # tab is LearnCad's own page, so every button is under our control.
+        # One left dock only. The engine's empty Task panel is kept hidden;
+        # the real constraint panel appears only while a sketch or feature
+        # task is active, tabbed with the coach.
         try:
             for other in main_window.findChildren(QtWidgets.QDockWidget):
                 if other is dock:
                     continue
                 if other.windowTitle().strip().lower() in ("tasks", "task", "inspector", "tool"):
-                    other.setWindowTitle("Task")
+                    other.setWindowTitle("Constraints")
                     other.setFloating(False)
                     empty = QtWidgets.QWidget()
                     empty.setFixedHeight(0)
@@ -2015,30 +3271,17 @@ def show_panel() -> QtWidgets.QDockWidget:
                     main_window.addDockWidget(QtCore.Qt.LeftDockWidgetArea, other)
                     other.hide()
                     _PANEL._task_dock = other
+                    _install_task_watch(main_window, other, dock)
                     break
         except Exception:
             pass
 
+        dock.show()
+        dock.raise_()
         try:
-            tools_dock = QtWidgets.QDockWidget("TOOL", main_window)
-            tools_dock.setObjectName("LearnCadToolsDock")
-            empty = QtWidgets.QWidget()
-            empty.setFixedHeight(0)
-            tools_dock.setTitleBarWidget(empty)
-            tools_dock.setWidget(_ToolsPage(_PANEL, tools_dock))
-            main_window.addDockWidget(QtCore.Qt.LeftDockWidgetArea, tools_dock)
-            main_window.tabifyDockWidget(tools_dock, dock)
-            tools_dock.show()
-            dock.show()
-            dock.raise_()
-            try:
-                main_window.setTabPosition(
-                    QtCore.Qt.LeftDockWidgetArea, QtWidgets.QTabWidget.North
-                )
-            except Exception:
-                pass
-            _PANEL._inspector_dock = tools_dock
-            main_window.resizeDocks([dock, tools_dock], [340, 340], QtCore.Qt.Horizontal)
+            main_window.setTabPosition(
+                QtCore.Qt.LeftDockWidgetArea, QtWidgets.QTabWidget.North
+            )
         except Exception:
             pass
 

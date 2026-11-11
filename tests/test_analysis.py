@@ -385,7 +385,9 @@ def test_suggest_underconstrained_sketch():
     sketch = make_sketch(dof=4, fully_constrained=False, constraint_count=2)
     doc = make_doc(sketches=[sketch], bodies=[make_body(sketches=[sketch])])
     snapshot, analysis = review(doc)
-    assert suggest_action(snapshot, analysis).id == "guide_sketch"
+    suggestion = suggest_action(snapshot, analysis)
+    assert suggestion.id == "fix_constraints"
+    assert "constrained" in suggestion.label.lower()
 
 
 def test_suggest_enclosure_uses_shell_not_hole():

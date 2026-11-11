@@ -35,8 +35,16 @@ HIGHLIGHT = argb(247, 201, 106)
 
 LEARNCAD_BODY = argb(214, 205, 194)
 LEARNCAD_LINE = argb(255, 122, 24)
-LEARNCAD_SELECTION = argb(255, 122, 24)
-LEARNCAD_HIGHLIGHT = argb(255, 179, 71)
+LEARNCAD_ACCENT = argb(255, 122, 24)
+LEARNCAD_ACCENT_2 = argb(255, 179, 71)
+# Selection must contrast with both the orange brand accent and the white
+# sketch edges. Cyan for a click, yellow for hover.
+LEARNCAD_SELECTION = argb(0, 220, 255)
+LEARNCAD_HIGHLIGHT = argb(255, 214, 64)
+LEARNCAD_EDGE = argb(235, 235, 235)
+LEARNCAD_CONSTRUCTION = argb(64, 156, 255)
+LEARNCAD_FULLY_CONSTRAINED = argb(120, 220, 90)
+LEARNCAD_EXTERNAL = argb(255, 120, 220)
 
 DARK_BG_TOP = (0.03, 0.06, 0.11)
 DARK_BG_MID = (0.06, 0.11, 0.19)
@@ -75,6 +83,12 @@ def _part():
     return App.ParamGet("User parameter:BaseApp/Preferences/Mod/Part")
 
 
+def _sketcher():
+    import FreeCAD as App
+
+    return App.ParamGet("User parameter:BaseApp/Preferences/Mod/Sketcher/View")
+
+
 def _set_uint(group, name: str, value: int) -> None:
     try:
         group.SetUnsigned(name, int(value))
@@ -107,9 +121,32 @@ def apply_preferences(theme: str = "keep") -> None:
         _set_uint(view, "BackgroundColor", argb(5, 5, 5))
         _set_uint(view, "BackgroundColor2", argb(46, 18, 3))
         _set_uint(view, "BackgroundColor3", argb(18, 8, 2))
+        sketcher = _sketcher()
+
+        def sketch_color(name: str, value: int) -> None:
+            # FreeCAD reads these from BaseApp/Preferences/View (this is where
+            # the Sketcher colour page saves them). Mirror them into the
+            # Sketcher group as well so older/newer builds pick them up.
+            _set_uint(view, name, value)
+            _set_uint(sketcher, name, value)
+
+        sketch_color("SketchEdgeColor", LEARNCAD_EDGE)
+        sketch_color("SketchVertexColor", LEARNCAD_EDGE)
+        sketch_color("ConstructionColor", LEARNCAD_CONSTRUCTION)
+        sketch_color("FullyConstrainedColor", LEARNCAD_FULLY_CONSTRAINED)
+        sketch_color("ExternalColor", LEARNCAD_EXTERNAL)
+        sketch_color("CreateLineColor", LEARNCAD_HIGHLIGHT)
+        # Red is reserved for real conflicts. Driving dimensions are amber,
+        # reference dimensions blue, geometry neutral.
+        sketch_color("ConstrainedDimColor", argb(255, 209, 102))
+        sketch_color("NonDrivingConstrDimColor", argb(120, 200, 255))
+        sketch_color("DatumColor", argb(120, 200, 255))
+        sketch_color("ConstrainedColor", argb(205, 218, 230))
+        sketch_color("DeactivatedConstrDimColor", argb(150, 150, 150))
+        sketch_color("ExprBasedConstrDimColor", argb(196, 156, 255))
         main = _main_window()
-        main.SetUnsigned("ThemeAccentColor1", LEARNCAD_SELECTION)
-        main.SetUnsigned("ThemeAccentColor2", LEARNCAD_HIGHLIGHT)
+        main.SetUnsigned("ThemeAccentColor1", LEARNCAD_ACCENT)
+        main.SetUnsigned("ThemeAccentColor2", LEARNCAD_ACCENT_2)
         main.SetUnsigned("ThemeAccentColor3", argb(122, 52, 8))
     elif theme == "light":
         _set_uint(view, "DefaultShapeColor", LIGHT_BODY)

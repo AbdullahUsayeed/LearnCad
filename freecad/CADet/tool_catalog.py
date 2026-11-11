@@ -148,7 +148,7 @@ SKETCH_GROUPS = (
 )
 
 MODEL_CREATE = Group("Create", (
-    Tool("New body", "PartDesign_Body", "Create a PartDesign Body"),
+    Tool("New body", "PartDesign_Body", "Create a body"),
     Tool("New sketch", "PartDesign_NewSketch", "Create a sketch on a plane or face"),
     Tool("Text shape", "Draft_ShapeString", "Create printable geometry from a text string"),
     Tool("Part container", "Std_Part", "Create a Part container for assemblies"),
@@ -222,7 +222,7 @@ MODEL_TREE = Group("Feature tree", (
     Tool("Move feature", "PartDesign_MoveFeature", "Move a feature to another body"),
     Tool("Move feature in tree", "PartDesign_MoveFeatureInTree", "Reorder a feature"),
     Tool("Coordinate system", "PartDesign_CoordinateSystem", "Add a local coordinate system"),
-    Tool("Migrate", "PartDesign_Migrate", "Migrate legacy Part Design features"),
+    Tool("Migrate", "PartDesign_Migrate", "Migrate legacy features"),
     Tool("Involute gear", "PartDesign_InvoluteGear", "Create an involute gear"),
     Tool("Sprocket", "PartDesign_Sprocket", "Create a sprocket"),
 ))
@@ -314,6 +314,7 @@ FILE_GROUPS = (
 LEARNCAD_GROUPS = (
     Group("LearnCad", (
         Tool("Open coach", "CADet_OpenMentor", "Open the LearnCad coach panel"),
+        Tool("Fix constraints for me", "CADet_FixConstraints", "Constrain the active sketch automatically"),
         Tool("Review model", "CADet_ReviewModel", "Run a fresh engineering review"),
         Tool("Studio look", "CADet_StudioLook", "Apply the clean viewport style"),
         Tool("Render studio", "CADet_RenderPreview", "Render a still with the studio engine"),

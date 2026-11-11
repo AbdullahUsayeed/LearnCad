@@ -1,0 +1,56 @@
+#!/bin/bash
+# LearnCad standalone AppImage entry point.
+# Keeps LearnCad's FreeCAD data separate from a normal FreeCAD installation and
+# registers LearnCad (not FreeCAD) with the desktop so the taskbar/dock matches.
+set -u
+
+HERE="$(dirname "$(readlink -f "${0}")")"
+export APPDIR="${APPDIR:-$HERE}"
+export LEARNCAD_STANDALONE=1
+
+# Register the app menu entry and icon on first run. This is what makes the
+# dock/taskbar resolve the window to LearnCad instead of FreeCAD.
+SELF="${APPIMAGE:-$HERE}"
+DESKTOP_DIR="$HOME/.local/share/applications"
+ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+if [ -d "$HOME" ]; then
+    mkdir -p "$DESKTOP_DIR" "$ICON_DIR" 2>/dev/null
+    if [ -f "$HERE/learncad.svg" ]; then
+        cp -f "$HERE/learncad.svg" "$ICON_DIR/learncad.svg" 2>/dev/null || true
+    fi
+    cat > "$DESKTOP_DIR/learncad.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=LearnCad
+GenericName=CAD Coach
+Comment=Beginner-friendly CAD with a live engineering mentor
+Exec="$SELF" %F
+Icon=learncad
+Terminal=false
+Categories=Graphics;Science;Education;Engineering;
+MimeType=application/x-extension-fcstd;
+StartupNotify=true
+StartupWMClass=FreeCAD
+EOF
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+    fi
+fi
+
+export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/learncad"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/learncad"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/learncad"
+
+CONFIG_DIR="$XDG_CONFIG_HOME/FreeCAD/v1-1"
+DATA_DIR="$XDG_DATA_HOME/FreeCAD/v1-1"
+mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$XDG_CACHE_HOME"
+
+if [ ! -f "$CONFIG_DIR/user.cfg" ] && [ -f "$HERE/learncad-defaults/user.cfg" ]; then
+    cp "$HERE/learncad-defaults/user.cfg" "$CONFIG_DIR/user.cfg"
+fi
+
+exec "$HERE/AppRun.freecad" \
+    --set-config DesktopFileName=learncad \
+    --set-config StartWorkbench=CADetWorkbench \
+    "$@"

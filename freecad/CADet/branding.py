@@ -14,7 +14,7 @@ import re
 import shutil
 from typing import Any
 
-from .compat import QtCore, QtGui, QtWidgets
+from .compat import QtCore, QtGui, QtWidgets, blocking_modal
 
 from . import settings, studio
 
@@ -26,6 +26,8 @@ AMBER = (255, 179, 71)
 DARK_ORANGE = (122, 52, 8)
 
 _applied = False
+_palette_applied = False
+_params_saved = False
 _title_connected = False
 _retitling = False
 _tidied = False
@@ -111,6 +113,9 @@ def apply_qss() -> None:
 
 
 def apply_palette() -> None:
+    global _palette_applied
+    if _palette_applied:
+        return
     app = QtWidgets.QApplication.instance()
     if app is None:
         return
@@ -129,6 +134,7 @@ def apply_palette() -> None:
     palette.setColor(QtGui.QPalette.ToolTipBase, QtGui.QColor("#111111"))
     palette.setColor(QtGui.QPalette.ToolTipText, QtGui.QColor("#ffb347"))
     app.setPalette(palette)
+    _palette_applied = True
 
 
 def _main_window():
@@ -173,6 +179,25 @@ def apply_title() -> None:
     _retitle()
 
 
+def _scrub_windows() -> None:
+    """Remove the engine name from any dialog or auxiliary window title."""
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        return
+    for widget in app.topLevelWidgets():
+        try:
+            title = widget.windowTitle() or ""
+            lowered = title.strip().lower()
+            if lowered in ("start page", "freecad start page") and widget.isVisible():
+                widget.hide()
+                continue
+            if "freecad" in lowered:
+                cleaned = re.sub(r"FreeCAD(?:\s+\d+(?:\.\d+)*)?", "LearnCad", title)
+                widget.setWindowTitle(cleaned)
+        except Exception:
+            pass
+
+
 def apply_icon() -> None:
     window = _main_window()
     if window is None:
@@ -185,22 +210,56 @@ def apply_icon() -> None:
         pass
 
 
-def apply() -> tuple[bool, str]:
-    global _applied
+def _mouse_busy() -> bool:
     try:
+        app = QtWidgets.QApplication.instance()
+        if app is not None and app.mouseButtons() != QtCore.Qt.NoButton:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _ui_busy() -> bool:
+    if _mouse_busy():
+        return True
+    try:
+        app = QtWidgets.QApplication.instance()
+        if blocking_modal() is not None:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def apply(force: bool = True) -> tuple[bool, str]:
+    global _applied
+    if not force and _mouse_busy():
+        return False, "Busy."
+    try:
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            try:
+                app.setApplicationDisplayName("LearnCad")
+            except Exception:
+                pass
         copied = copy_theme()
         apply_preferences()
         apply_qss()
         apply_palette()
         apply_title()
         apply_icon()
+        _scrub_windows()
         ok, message = studio.apply("learncad")
-        try:
-            import FreeCAD as App
+        global _params_saved
+        if not _params_saved:
+            try:
+                import FreeCAD as App
 
-            App.saveParameter()
-        except Exception:
-            pass
+                App.saveParameter()
+                _params_saved = True
+            except Exception:
+                pass
         _applied = True
         theme_note = "Theme file installed." if copied else "Theme file could not be copied; runtime colors are still applied."
         return ok, theme_note + " " + message
@@ -214,6 +273,8 @@ def restore_view() -> None:
     A previous dock experiment can leave the MDI child collapsed. This is a
     harmless no-op when the view is already healthy.
     """
+    if _mouse_busy():
+        return
     try:
         win = _main_window()
         if win is None:
@@ -294,13 +355,14 @@ def tidy_empty_documents() -> None:
 def schedule() -> None:
     if not settings.load().get("learncad_branding", True):
         return
-    QtCore.QTimer.singleShot(1200, apply)
-    QtCore.QTimer.singleShot(4000, apply)
+    for delay in (1200, 3000, 6000, 12000, 20000):
+        QtCore.QTimer.singleShot(delay, lambda: apply(force=False))
     QtCore.QTimer.singleShot(6000, tidy_empty_documents)
     QtCore.QTimer.singleShot(8000, apply_title)
-    QtCore.QTimer.singleShot(5000, restore_view)
-    QtCore.QTimer.singleShot(9000, restore_view)
-    QtCore.QTimer.singleShot(13000, restore_view)
+    for delay in (5000, 9000, 13000, 20000, 30000):
+        QtCore.QTimer.singleShot(delay, restore_view)
+    for delay in (2500, 7000, 15000, 25000):
+        QtCore.QTimer.singleShot(delay, _scrub_windows)
     try:
         from . import simple_mode
 

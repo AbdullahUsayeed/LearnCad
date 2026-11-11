@@ -43,6 +43,8 @@ def _dims_text(snapshot: Snapshot) -> str:
             )
     if not lines:
         for sketch in doc.sketches:
+            if sketch.helper:
+                continue
             dims = sketch.bbox.dims
             if max(dims) > 0:
                 lines.append(f"{_label(sketch)} (sketch): {_fmt(dims[0])} x {_fmt(dims[1])} x {_fmt(dims[2])} mm")
@@ -55,6 +57,8 @@ def _sketch_lines(snapshot: Snapshot) -> list[str]:
         return []
     lines = []
     for sketch in doc.sketches:
+        if sketch.helper:
+            continue
         status = "fully constrained" if sketch.fully_constrained else f"{sketch.dof} DoF left"
         profile = "closed" if sketch.is_closed else f"{sketch.open_wires} open wire(s)"
         lines.append(f"{_label(sketch)}: {sketch.geometry_count} geometry, {sketch.constraint_count} constraints, {status}, {profile}.")
@@ -101,10 +105,12 @@ def _constraints_help(snapshot: Snapshot) -> str:
     doc = snapshot.doc
     if not doc:
         return "Open a sketch first, then I can read its constraints."
-    if not doc.sketches:
+    if not any(not sketch.helper for sketch in doc.sketches):
         return "There is no sketch in this document yet. Create one on a principal plane."
     lines = []
     for sketch in doc.sketches:
+        if sketch.helper:
+            continue
         name = _label(sketch)
         if sketch.conflicting:
             lines.append(f"{name}: delete the {sketch.conflicting} conflicting constraint(s) first. Do not add more until the solver is calm.")
@@ -124,6 +130,14 @@ def _constraints_help(snapshot: Snapshot) -> str:
                 hint.append("add coincident, horizontal/vertical, then dimensional constraints")
             lines.append(f"{name}: {sketch.dof} DoF left. Add constraints: " + "; ".join(hint) + ".")
     return "\n".join(lines)
+
+
+def _simple_python_hint() -> str:
+    return (
+        "Python scripting is part of the advanced workspace. Turn Simple Mode off in Setup, "
+        "then open the scripting console. In Simple Mode the coach focuses on the model: "
+        "sketches, constraints, features, printability, and the next step."
+    )
 
 
 def _python_help(snapshot: Snapshot) -> str:
@@ -247,7 +261,12 @@ def _is_model_question(question: str) -> bool:
     return any(marker in q for marker in _MODEL_QUESTION_MARKERS)
 
 
-def answer(question: str, snapshot: Snapshot, analysis: Analysis) -> str:
+def answer(
+    question: str,
+    snapshot: Snapshot,
+    analysis: Analysis,
+    simple_mode: bool = False,
+) -> str:
     q = (question or "").strip().lower()
     doc = snapshot.doc
 
@@ -267,7 +286,7 @@ def answer(question: str, snapshot: Snapshot, analysis: Analysis) -> str:
         return _help_text()
 
     if any(word in q for word in ("python", "script", "macro", "api", "code")):
-        return _python_help(snapshot)
+        return _simple_python_hint() if simple_mode else _python_help(snapshot)
 
     if app_guide.looks_like_howto(q):
         return app_guide.answer(q)
@@ -315,7 +334,7 @@ def answer(question: str, snapshot: Snapshot, analysis: Analysis) -> str:
         return "\n".join(lines)
 
     if any(word in q for word in ("python", "script", "macro", "api", "code")):
-        return _python_help(snapshot)
+        return _simple_python_hint() if simple_mode else _python_help(snapshot)
 
     if any(word in q for word in ("error", "wrong", "broken", "fix", "fail", "red", "invalid")):
         return _errors(snapshot, analysis)

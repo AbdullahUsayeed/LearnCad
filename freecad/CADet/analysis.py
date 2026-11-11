@@ -124,9 +124,9 @@ def _analyze_document(snapshot: Snapshot, issues: list[Issue], praises: list[Pra
             issues,
             "workbench_mismatch",
             "info",
-            f"This is a Body model, but you're in {doc.workbench}",
-            "The model is fine. The active workbench only changes which tools are in front of you.",
-            "Switch to the Body tools when you want to add features; switch to Sketch when you want to edit the profile.",
+            "The modeling tools are hidden right now",
+            "The model is fine. The active workspace only changes which tools are in front of you.",
+            "Switch back to Model tools when you want to add features; switch to Sketch when you want to edit the profile.",
         )
 
     if not doc.bodies and doc.features:
@@ -175,7 +175,7 @@ def _analyze_bodies(snapshot: Snapshot, issues: list[Issue], praises: list[Prais
             "info",
             f"{len(doc.bodies)} separate bodies",
             "Separate bodies are fine for separate parts, but mating features between them will not update together unless you use an assembly or a shape binder.",
-            "Keep one part per body. If these parts must move relative to each other, use the Assembly workbench.",
+            "Keep one part per body. If these parts must move relative to each other, use the assembly tools.",
         )
 
     for body in doc.bodies:
@@ -332,6 +332,8 @@ def _analyze_sketches(snapshot: Snapshot, issues: list[Issue], praises: list[Pra
         return
 
     for sketch in doc.sketches:
+        if sketch.helper:
+            continue
         label = sketch.label or sketch.name
         if sketch.is_empty:
             _add(
@@ -421,7 +423,7 @@ def _analyze_sketches(snapshot: Snapshot, issues: list[Issue], praises: list[Pra
                 "critical",
                 f"Sketch '{label}' has {sketch.open_wires} open profile(s)",
                 "Pad, Pocket and Revolve need closed profiles. An open profile will fail or produce a thin shell instead of a solid. Even a 0.001 mm gap counts.",
-                "Find the gap: zoom in on the endpoints, add Coincident constraints, and confirm the wire is closed before leaving Sketcher.",
+                "Find the gap: zoom in on the endpoints, add Coincident constraints, and confirm the wire is closed before closing the sketch.",
                 sketch,
             )
 
@@ -702,9 +704,10 @@ def _score(snapshot: Snapshot, issues: list[Issue]) -> int:
         elif issue.severity == "info":
             score -= 3
 
+    user_sketches = [sketch for sketch in doc.sketches if not sketch.helper]
     if not _has_any_solid(doc):
         score -= 8
-    if any(s.fully_constrained for s in doc.sketches):
+    if any(s.fully_constrained for s in user_sketches):
         score += 6
     if any(b.has_solid and b.shape_valid and b.shape_closed for b in doc.bodies):
         score += 8
@@ -721,7 +724,7 @@ def _score(snapshot: Snapshot, issues: list[Issue]) -> int:
     if not _has_any_solid(doc):
         score = min(score, 70)
         if (
-            not doc.sketches
+            not user_sketches
             and not any(body.feature_count for body in doc.bodies)
             and not doc.imported_objects
         ):
@@ -742,7 +745,9 @@ def _headline(score: int, snapshot: Snapshot) -> str:
         doc.bodies
         and not any(body.feature_count for body in doc.bodies)
         and not doc.features
-        and not any(sketch.geometry_count > 0 for sketch in doc.sketches)
+        and not any(
+            sketch.geometry_count > 0 and not sketch.helper for sketch in doc.sketches
+        )
     ):
         return "Body ready. Sketch the profile next."
     if score >= 60 and not _has_any_solid(doc) and any(
@@ -860,7 +865,7 @@ def _build_plan(snapshot: Snapshot, intent, issues: list[Issue]) -> list[str]:
     body = doc.bodies[0] if doc.bodies else None
     if body is None:
         if doc.features:
-            steps.append("Verify the geometry and the dimensions; this is a Part-workbench model without a feature tree.")
+            steps.append("Verify the geometry and the dimensions; this model has no editable feature tree.")
             steps.append("Export STL or STEP.")
         return _unique(steps)[:5]
 

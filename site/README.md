@@ -13,11 +13,14 @@ python -m http.server 8000 --directory site
 Open <http://127.0.0.1:8000/>.
 
 The download buttons point at `site/downloads/`, which currently contains the
-0.6.1 installer and portable zip.
+0.6.5 installer and portable zip.
 
 ## Pages
 
 - `index.html` - landing page and the "how to learn CAD" roadmap.
+- `courses/index.html` - free `.learncad` course catalog and download page.
+- `courses/catalog.json` - generated catalog. Do not edit by hand.
+- `courses/packages/` - generated `.learncad` packages. Do not edit by hand.
 - `learn-freecad.html` - long-form beginner guide targeting FreeCAD searches.
 - `freecad-look-like-solidworks.html` - visual quality guide targeting "FreeCAD looks worse than SolidWorks" and "make FreeCAD look better" searches.
 - `styles.css` - shared design.
@@ -37,6 +40,7 @@ learncad.example.com
 Update these files:
 
 - `index.html` canonical, Open Graph, Twitter, and JSON-LD URLs.
+- `courses/index.html` canonical and Open Graph URLs.
 - `learn-freecad.html` canonical, Open Graph, Twitter, and JSON-LD URLs.
 - `robots.txt` sitemap URL.
 - `sitemap.xml` loc entries.
@@ -99,6 +103,20 @@ with a native `<video>` element.
 ## Blender renders
 
 The LearnCad panel can render a photorealistic still by exporting the active solid to Blender. Blender is optional and is not required for the site or the normal viewport. The render bridge includes aluminum, plastic, and rubber material presets and uses Cycles for reflective metal.
+
+## Rebuilding the course catalog
+
+Course sources live in `courses/`, one folder per course with a
+`manifest.json`. After adding or editing a course:
+
+```powershell
+python3 tools/course_tool.py build
+python3 tools/course_tool.py check site/courses/catalog.json
+```
+
+`build` packs every source folder, removes stale packages, and regenerates
+`site/courses/catalog.json`. Commit the source folder and the generated
+packages and catalog together.
 
 ## Rebuilding downloads
 

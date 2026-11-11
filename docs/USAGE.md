@@ -9,7 +9,7 @@ black-box model. You still draw, constrain, and confirm the feature.
 ### Windows installer
 
 1. Close FreeCAD.
-2. Run `LearnCad-Setup-0.4.6.exe`.
+2. Run `LearnCad-Setup-0.6.5.exe`.
 3. The installer places LearnCad in the FreeCAD user Mod folder:
    `%APPDATA%\FreeCAD\v1-1\Mod\LearnCad`.
 4. It creates an uninstall entry in Windows Apps & Features.
@@ -20,7 +20,7 @@ does not modify the FreeCAD installation folder.
 
 ### Portable zip
 
-Extract the `LearnCad` folder from `LearnCad-0.4.6-portable.zip` into:
+Extract the `LearnCad` folder from `LearnCad-0.6.5-portable.zip` into:
 
 ```text
 %APPDATA%\FreeCAD\v1-1\Mod\
@@ -49,7 +49,7 @@ If the panel is already open but hidden, press `Ctrl+Shift+M` or use
 
 ## 3. The first five minutes
 
-1. In **I'm making**, type what you are building, for example:
+1. In the **Ask LearnCad** bar, type what you are building, for example:
    - `a phone stand`
    - `a bracket for a 40x40 extrusion`
    - `an enclosure for an ESP32 board`
@@ -97,8 +97,14 @@ This is the main button. It can:
 - open the first failing feature;
 - open the Export dialog with the solid selected.
 
-It does not click toolbar buttons for you, silently apply constraints, or
-confirm a feature. Some dialogs are modal; close them when you are done.
+When a sketch is under-constrained, **Fix constraints for me** appears. It adds
+the obvious coincident, horizontal/vertical, and radius constraints first, then
+pins any remaining freedom with ordinary dimensions at the current shape. It
+never deletes your geometry or constraints, and every applied constraint is
+validated against the solver. You can still edit the dimensions afterwards.
+
+Guide me does not click toolbar buttons for you or confirm a feature. Some
+dialogs are modal; close them when you are done.
 
 ### Your mentor says
 
@@ -109,18 +115,37 @@ Each note has:
 - **The reason** - why it matters for editing or printing.
 - **Do** - the specific action.
 
-Press **More details** for the full context, the complete plan, the activity
-log, the full review, and the Ask box.
+The panel stays deliberately small: state, **Do this next**, one **Mentor**
+note, and a single **Ask LearnCad** bar. The three-dot menu opens **All tools**,
+**Studio look**, **Render studio**, and **Setup**. The full engineering review
+is available from **Review My Model** in the LearnCad menu.
 
-### More details
+### The one bar
 
-- **Plan** - the suggested sequence from the current state to export.
-- **Activity** - live transitions: document opened, new warnings, resolved
-  warnings, fully constrained sketches, clean solids, and Guide me actions.
-- **Review** - a full engineering review you can copy into a design review or
-  handoff.
-- **Ask** - a question box. Without AI, the local mentor answers from the same
-  deterministic analysis.
+- **Ask LearnCad** - type a part name to set the goal, or ask a question.
+  Without AI, the local mentor answers from the same deterministic analysis.
+
+### Constraint panel
+
+The engine constraint panel is hidden by default so nothing pops in from the
+right. It appears on the left only while you are editing a sketch or entering a
+dimension, then hides itself when the task ends. Pad, Pocket, Hole, Fillet and
+Shell use small LearnCad dialogs instead.
+
+## Import a community course
+
+Free `.learncad` courses are available from the LearnCad site.
+
+1. Download a `.learncad` file.
+2. In the LearnCad panel, open the three-dot menu and choose **Import course...**.
+   You can also use **LearnCad > Import Course...** from the workbench menu.
+3. Choose the file. LearnCad validates it, installs it in the local courses
+   folder, and adds its lessons to the Courses dialog.
+4. Open **Courses** and start a lesson.
+
+Packages are data only. They contain a manifest, lesson steps, and optional
+preview or checkpoint assets. They cannot execute code. To author or submit a
+course, see [COURSES.md](COURSES.md).
 
 ## 5. A first project: bracket
 
@@ -161,21 +186,41 @@ The goal is not to follow LearnCad forever. The goal is to internalize the revie
 6. Design the lid and the fastening method.
 7. Check wall thickness and clearances before exporting.
 
-## 8. AI explanations (paid add-on)
+## 8. AI explanations (optional)
 
-The deterministic mentor works offline and is free. AI explanations require an
-active subscription and are off by default.
+The deterministic coach works offline and is free. AI explanations are off by
+default and can use whichever provider you prefer.
+
+**Option A - DeepSeek V4.1 Flash**
+
+1. Open Setup and choose **DeepSeek (V4.1 Flash)**.
+2. Paste your DeepSeek API key. The app fills in `https://api.deepseek.com` and `deepseek-flash`.
+3. Accept the privacy note, enable AI, then Save.
+4. Press **Test AI connection**.
+
+**Option B - your own API key**
+
+1. Open Setup and choose **OpenAI or compatible API**.
+2. Enter the base URL (for example `https://api.openai.com/v1`), the model, and your key.
+3. Accept the privacy note, enable AI, then Save.
+4. Press **Test AI connection**.
+
+**Option C - local Ollama (free)**
+
+1. Install Ollama and run a model such as `ollama run llama3.1`.
+2. In Setup choose **Ollama on this computer**. The base URL is
+   `http://localhost:11434/v1` and no key is needed.
+3. Accept the privacy note, enable AI, then Save. Nothing leaves your machine.
+
+**Option D - LearnCad cloud subscription**
 
 1. Press **Subscribe** in Setup and complete the PayPal subscription on the web page.
-2. Check your email for the LearnCad license code.
-3. In Setup, enter the AI server URL, the same email, and the license code.
-4. Press **Activate**, accept the privacy note, enable AI, then Save.
-5. Press **Check subscription** if you need to confirm the token.
+2. In Setup choose **LearnCad cloud**, enter the AI server URL, your email, and the license code.
+3. Press **Activate**, accept the privacy note, enable AI, then Save.
 
 What is sent: a compact summary of object names, dimensions, constraint counts,
 states, and the deterministic review, plus your question. Geometry files are not
-uploaded. The language-model key stays on the LearnCad server; the desktop app
-stores only the access token with Windows DPAPI when available.
+uploaded. Keys and tokens are stored with Windows DPAPI when available.
 
 ## Studio look (visual quality)
 
@@ -287,8 +332,8 @@ Deleting the settings folder removes the goal, the AI access token and the licen
 - **It is goal-aware.** A bracket and a phone stand have different failure
   modes. The review changes with the stated design intent.
 - **It is local-first.** The free coach uploads nothing and needs no account.
-  Paid AI is explicit, requires an active subscription, and sends only a compact
-  model summary to the LearnCad server.
+  AI is explicit, off by default, and sends only a compact model summary to the
+  provider you choose (your API, local Ollama, or the LearnCad cloud).
 - **It produces reviewable output.** The full review can be copied into a
   handoff or design review. That is the difference between a toy and a tool.
 - **It does not lock the model in.** It works on real FreeCAD files and the

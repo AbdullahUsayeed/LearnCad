@@ -105,7 +105,15 @@ def _sketch_obj(snapshot: Snapshot):
     ]
     for sketch in reversed(sketches):
         try:
+            if bool(getattr(sketch, "LearnCadHelper", False)):
+                continue
             if int(getattr(sketch, "GeometryCount", 0) or 0) > 0:
+                return sketch
+        except Exception:
+            pass
+    for sketch in reversed(sketches):
+        try:
+            if not bool(getattr(sketch, "LearnCadHelper", False)):
                 return sketch
         except Exception:
             pass
@@ -152,7 +160,7 @@ def _select_missing(sketch) -> str:
         if geometry_count > 0 and (
             bool(getattr(sketch, "FullyConstrained", False)) or int(getattr(sketch, "DoF", 0) or 0) == 0
         ):
-            return "This sketch is fully constrained. Leave Sketcher and pad it, or add the next feature."
+            return "This sketch is fully constrained. Close the sketch and pad it, or add the next feature."
     except Exception:
         pass
     for method, args in (
@@ -323,25 +331,87 @@ def close_sketch(snapshot: Snapshot) -> tuple[bool, str]:
     return _ok("Sketch closed. The profile is ready to pad.")
 
 
-def solve_constraints(snapshot: Snapshot) -> tuple[bool, str]:
-    """Add the obvious missing constraints to the active sketch.
+def _sketch_state(sketch) -> dict[str, int]:
+    def _count(name: str) -> int:
+        try:
+            return len(getattr(sketch, name, []) or [])
+        except Exception:
+            return 0
 
-    The constraint insertion follows the safe pattern used by
-    ghbalf/freecad-ai (LGPL-2.1). It only adds Coincident, Horizontal/Vertical,
-    and Radius constraints derived from the sketch's own missing-constraint
-    detectors; it never deletes user geometry or constraints.
-    """
-    sketch = _sketch_obj(snapshot)
-    if sketch is None:
-        return _fail("No sketch found. Open the sketch you want fixed.")
-    doc = App.ActiveDocument
-    if doc is None:
-        return _fail("No document is open.")
     try:
-        import Sketcher
+        dof = int(getattr(sketch, "DoF", 0) or 0)
     except Exception:
-        return _fail("Sketcher is not available in this session.")
+        dof = 0
+    return {
+        "dof": dof,
+        "conflicting": _count("ConflictingConstraints"),
+        "redundant": _count("RedundantConstraints"),
+        "malformed": _count("MalformedConstraints"),
+    }
 
+
+def _solve_quietly(sketch) -> None:
+    try:
+        sketch.solve()
+    except Exception:
+        pass
+
+
+def _remove_redundant_constraints(sketch) -> int:
+    """Delete constraints the solver reports as redundant.
+
+    A redundant constraint adds no information (it is implied by the others),
+    but it keeps the sketch in an error state and makes every later tool fail.
+    FreeCAD's own solver routine removes exactly the flagged constraints and
+    re-maps the remaining indexes, which is far safer than deleting by index.
+    """
+    try:
+        before = len(list(sketch.RedundantConstraints or []))
+    except Exception:
+        before = 0
+    try:
+        remover = getattr(sketch, "autoRemoveRedundants", None)
+        if remover is not None:
+            remover(True)
+    except Exception:
+        pass
+    _solve_quietly(sketch)
+    try:
+        after = len(list(sketch.RedundantConstraints or []))
+    except Exception:
+        after = 0
+    return max(0, before - after)
+
+
+def _try_constraint(sketch, constraint, label: str, added: list[str]) -> bool:
+    """Add one constraint only if it removes freedom without breaking the solver."""
+    before = _sketch_state(sketch)
+    index = None
+    try:
+        index = sketch.addConstraint(constraint)
+    except Exception:
+        return False
+    _solve_quietly(sketch)
+    after = _sketch_state(sketch)
+    helpful = (
+        after["dof"] < before["dof"]
+        and after["conflicting"] <= before["conflicting"]
+        and after["redundant"] <= before["redundant"]
+        and after["malformed"] <= before["malformed"]
+    )
+    if helpful:
+        added.append(label)
+        return True
+    try:
+        if index is not None:
+            sketch.delConstraint(index)
+    except Exception:
+        pass
+    _solve_quietly(sketch)
+    return False
+
+
+def _run_missing_detectors(sketch) -> None:
     for method, args in (
         ("detectMissingPointOnPointConstraints", (0.3, False)),
         ("detectMissingVerticalHorizontalConstraints", (0.1,)),
@@ -352,8 +422,37 @@ def solve_constraints(snapshot: Snapshot) -> tuple[bool, str]:
         except Exception:
             pass
 
-    added = []
-    doc.openTransaction("LearnCad solve constraints")
+
+def stabilize_sketch(sketch) -> int:
+    """Add only the obvious geometric constraints before a dimension.
+
+    This keeps the current shape from shearing when a new dimension is
+    applied. It never adds dimensions and it rolls back anything the solver
+    rejects. Returns the number of constraints added.
+    """
+    try:
+        import Sketcher
+    except Exception:
+        return 0
+    # If the sketch is already in an error state, clean up what the solver
+    # says is redundant and do not pile more constraints on top of real
+    # conflicts. Otherwise every later tool reports errors everywhere.
+    _remove_redundant_constraints(sketch)
+    state = _sketch_state(sketch)
+    if state["conflicting"] or state["malformed"] or state["redundant"]:
+        return 0
+    try:
+        sketch.detectMissingPointOnPointConstraints(0.2, False)
+        sketch.detectMissingVerticalHorizontalConstraints(0.02)
+    except Exception:
+        pass
+    doc = App.ActiveDocument
+    added: list[str] = []
+    if doc is not None:
+        try:
+            doc.openTransaction("LearnCad stabilize")
+        except Exception:
+            pass
     try:
         try:
             pairs = list(getattr(sketch, "MissingPointOnPointConstraints", []) or [])
@@ -362,10 +461,12 @@ def solve_constraints(snapshot: Snapshot) -> tuple[bool, str]:
         for pair in pairs:
             try:
                 geo1, pos1, geo2, pos2 = (int(v) for v in pair[:4])
-                sketch.addConstraint(
-                    Sketcher.Constraint("Coincident", geo1, pos1, geo2, pos2)
+                _try_constraint(
+                    sketch,
+                    Sketcher.Constraint("Coincident", geo1, pos1, geo2, pos2),
+                    "Coincident",
+                    added,
                 )
-                added.append("Coincident")
             except Exception:
                 pass
 
@@ -381,8 +482,126 @@ def solve_constraints(snapshot: Snapshot) -> tuple[bool, str]:
                 end = geometry.EndPoint
                 horizontal = abs(end.x - start.x) >= abs(end.y - start.y)
                 kind = "Horizontal" if horizontal else "Vertical"
-                sketch.addConstraint(Sketcher.Constraint(kind, geo_id))
-                added.append(kind)
+                _try_constraint(sketch, Sketcher.Constraint(kind, geo_id), kind, added)
+            except Exception:
+                pass
+        if added:
+            _solve_quietly(sketch)
+        if doc is not None:
+            doc.commitTransaction()
+    except Exception:
+        if doc is not None:
+            try:
+                doc.abortTransaction()
+            except Exception:
+                pass
+    return len(added)
+
+
+def _lock_candidates(sketch):
+    """Yield the dimensional constraints that pin geometry to its current spot."""
+    try:
+        geometry_items = list(sketch.Geometry)
+    except Exception:
+        return
+
+    for geo_id, geometry in enumerate(geometry_items):
+        start = getattr(geometry, "StartPoint", None)
+        end = getattr(geometry, "EndPoint", None)
+        center = getattr(geometry, "Center", None)
+        radius = getattr(geometry, "Radius", None)
+
+        for point, pos_id in ((start, 1), (end, 2), (center, 3)):
+            if point is None:
+                continue
+            try:
+                x = float(point.x)
+                y = float(point.y)
+            except Exception:
+                continue
+            yield ("DistanceX", geo_id, pos_id, x), "Horizontal distance"
+            yield ("DistanceY", geo_id, pos_id, y), "Vertical distance"
+
+        if radius is not None:
+            try:
+                value = float(radius)
+            except Exception:
+                value = 0.0
+            if value > 0:
+                yield ("Radius", geo_id, value), "Radius"
+
+
+def solve_constraints(snapshot: Snapshot) -> tuple[bool, str]:
+    """Make the active sketch fully constrained in one click.
+
+    It first joins endpoints, straightens lines, and adds missing radii. Any
+    freedom that remains is pinned with ordinary dimensions at the current shape,
+    so the model does not move and the user can edit the values later. Every
+    constraint is validated against the solver and rolled back if it would
+    conflict or be redundant. It never deletes user geometry or constraints.
+    """
+    sketch = _sketch_obj(snapshot)
+    if sketch is None:
+        return _fail("No sketch found. Open the sketch you want fixed.")
+    doc = App.ActiveDocument
+    if doc is None:
+        return _fail("No document is open.")
+    try:
+        import Sketcher
+    except Exception:
+        return _fail("The sketch editor is not available in this session.")
+
+    try:
+        if Gui is not None:
+            Gui.runCommand("Sketcher_StopOperation")
+    except Exception:
+        pass
+
+    cleaned = _remove_redundant_constraints(sketch)
+    prefix = f"Removed {cleaned} redundant constraint(s). " if cleaned else ""
+    _run_missing_detectors(sketch)
+    state = _sketch_state(sketch)
+    if state["conflicting"] or state["malformed"] or state["redundant"]:
+        return _fail(
+            prefix
+            + "This sketch still has a real conflict. Delete the constraint the "
+            "solver marks in red, then run Fix constraints again."
+        )
+    if state["dof"] == 0 or bool(getattr(sketch, "FullyConstrained", False)):
+        return _ok(prefix + "This sketch is already fully constrained.")
+
+    added: list[str] = []
+    doc.openTransaction("LearnCad auto constraints")
+    try:
+        try:
+            pairs = list(getattr(sketch, "MissingPointOnPointConstraints", []) or [])
+        except Exception:
+            pairs = []
+        for pair in pairs:
+            try:
+                geo1, pos1, geo2, pos2 = (int(v) for v in pair[:4])
+                _try_constraint(
+                    sketch,
+                    Sketcher.Constraint("Coincident", geo1, pos1, geo2, pos2),
+                    "Coincident",
+                    added,
+                )
+            except Exception:
+                pass
+
+        try:
+            hv_items = list(getattr(sketch, "MissingVerticalHorizontalConstraints", []) or [])
+        except Exception:
+            hv_items = []
+        for item in hv_items:
+            try:
+                geo_id = int(item[0])
+                geometry = sketch.Geometry[geo_id]
+                start = geometry.StartPoint
+                end = geometry.EndPoint
+                horizontal = abs(end.x - start.x) >= abs(end.y - start.y)
+                kind = "Horizontal" if horizontal else "Vertical"
+                _try_constraint(sketch, Sketcher.Constraint(kind, geo_id), kind, added)
             except Exception:
                 pass
 
@@ -393,20 +612,35 @@ def solve_constraints(snapshot: Snapshot) -> tuple[bool, str]:
         for item in radius_items:
             try:
                 geo_id = int(item[0] if isinstance(item, (tuple, list)) else item)
-                geometry = sketch.Geometry[geo_id]
-                radius = float(geometry.Radius)
+                radius = float(sketch.Geometry[geo_id].Radius)
                 if radius > 0:
-                    sketch.addConstraint(
-                        Sketcher.Constraint("Radius", geo_id, radius)
+                    _try_constraint(
+                        sketch,
+                        Sketcher.Constraint("Radius", geo_id, radius),
+                        "Radius",
+                        added,
                     )
-                    added.append("Radius")
             except Exception:
                 pass
 
-        try:
-            sketch.solve()
-        except Exception:
-            pass
+        for args, label in _lock_candidates(sketch):
+            if _sketch_state(sketch)["dof"] == 0:
+                break
+            _try_constraint(sketch, Sketcher.Constraint(*args), label, added)
+
+        if _sketch_state(sketch)["dof"] > 0:
+            try:
+                geometry_count = int(getattr(sketch, "GeometryCount", 0) or 0)
+            except Exception:
+                geometry_count = 0
+            for geo_id in range(geometry_count):
+                if _sketch_state(sketch)["dof"] == 0:
+                    break
+                _try_constraint(
+                    sketch, Sketcher.Constraint("Block", geo_id), "Block", added
+                )
+
+        _solve_quietly(sketch)
         doc.recompute()
         doc.commitTransaction()
     except Exception as exc:
@@ -416,24 +650,28 @@ def solve_constraints(snapshot: Snapshot) -> tuple[bool, str]:
             pass
         return _fail("Could not apply constraints: " + str(exc))
 
-    try:
-        dof = int(getattr(sketch, "DoF", 0) or 0)
-        fully = bool(getattr(sketch, "FullyConstrained", False))
-    except Exception:
-        dof = 0
-        fully = False
+    state = _sketch_state(sketch)
+    fully = state["dof"] == 0 or bool(getattr(sketch, "FullyConstrained", False))
     if not added:
-        if fully or dof == 0:
-            return _ok("The sketch is already fully constrained.")
+        if fully:
+            return _ok(prefix + "This sketch is already fully constrained.")
         return _fail(
-            "I could not find an obvious missing constraint to add. "
-            "Select the geometry that still moves and dimension it, or use Guide me through constraints."
+            prefix
+            + "I could not find a safe constraint to add. Select the geometry that still "
+            "moves and add one dimension, then try again."
         )
-    summary = ", ".join(added[:6]) + ("..." if len(added) > 6 else "")
-    if fully or dof == 0:
-        return _ok(f"Added {len(added)} constraint(s): {summary}. The sketch is fully constrained.")
+
+    summary = ", ".join(sorted(set(added))[:6])
+    if fully:
+        return _ok(
+            prefix
+            + f"Done. I added {len(added)} constraint(s) ({summary}) and locked the current "
+            "shape. It is fully constrained now. Edit the dimensions to resize it."
+        )
     return _ok(
-        f"Added {len(added)} constraint(s): {summary}. {dof} degree(s) of freedom remain; add dimensions for the sizes."
+        prefix
+        + f"I added {len(added)} constraint(s) ({summary}). {state['dof']} degree(s) of "
+        "freedom remain; select the geometry that still moves and add one dimension."
     )
 
 
@@ -504,19 +742,78 @@ def activate_body(snapshot: Snapshot) -> tuple[bool, str]:
     return _ok(f"'{getattr(body, 'Label', None) or getattr(body, 'Name', 'Body')}' is now the active Body.")
 
 
+def _selected_face_ref():
+    try:
+        for selection in Gui.Selection.getSelectionEx():
+            obj = getattr(selection, "Object", None)
+            for name in (getattr(selection, "SubElementNames", None) or []):
+                text = str(name)
+                if text.startswith("Face"):
+                    return obj, text
+    except Exception:
+        pass
+    return None, ""
+
+
+def _set_working_view(sketch, size_mm: float = 100.0) -> None:
+    """Zoom a brand-new sketch to a comfortable working size.
+
+    An empty sketch otherwise inherits whatever zoom level was active, which is
+    how beginners end up drawing parts that are only a millimetre across.
+    """
+    if Gui is None:
+        return
+    try:
+        if int(getattr(sketch, "GeometryCount", 0) or 0) != 0:
+            return
+        span = max(1.0, float(size_mm))
+        gdoc = _gui_doc()
+        view = gdoc.activeView() if gdoc is not None else None
+        if view is None:
+            return
+        try:
+            view.setCameraType("Orthographic")
+        except Exception:
+            pass
+        try:
+            camera = view.getCameraNode()
+            if str(view.getCameraType()) == "Orthographic":
+                camera.height.setValue(span * 2.0)
+            else:
+                camera.heightAngle.setValue(0.7)
+        except Exception:
+            pass
+        try:
+            Gui.updateGui()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _schedule_working_view(sketch, size_mm: float = 100.0) -> None:
+    """Apply the working zoom now and again once the editor view settles."""
+    _set_working_view(sketch, size_mm)
+    try:
+        from .compat import QtCore
+
+        for delay in (250, 800):
+            QtCore.QTimer.singleShot(delay, lambda: _set_working_view(sketch, size_mm))
+    except Exception:
+        pass
+
+
 def new_sketch(snapshot: Snapshot) -> tuple[bool, str]:
-    """Start FreeCAD's native sketch command so the plane picker and face
-    selection behave exactly as they do outside LearnCad."""
+    """Create a sketch on the selected face or a chosen plane.
+
+    The sketch is created directly and opened with setEdit, so FreeCAD's
+    native plane-picker task bar never appears.
+    """
     if Gui is None:
         return _fail("The LearnCad interface is not available in this session.")
     doc = App.ActiveDocument
     if doc is None:
         doc = App.newDocument()
-
-    try:
-        selection = list(Gui.Selection.getSelectionEx())
-    except Exception:
-        selection = []
 
     try:
         Gui.activateWorkbench("PartDesignWorkbench")
@@ -536,16 +833,6 @@ def new_sketch(snapshot: Snapshot) -> tuple[bool, str]:
         doc.recompute()
         _ensure_view()
     _activate_body(body)
-    try:
-        if selection and not Gui.Selection.getSelectionEx():
-            for entry in selection:
-                obj = getattr(entry, "Object", None)
-                if obj is not None:
-                    Gui.Selection.addSelection(
-                        obj, list(getattr(entry, "SubElementNames", []) or [])
-                    )
-    except Exception:
-        pass
 
     try:
         gdoc = _gui_doc()
@@ -554,22 +841,46 @@ def new_sketch(snapshot: Snapshot) -> tuple[bool, str]:
     except Exception:
         pass
 
-    for command in ("PartDesign_NewSketch", "Sketcher_NewSketch"):
+    face_obj, face_name = _selected_face_ref()
+    feature = None
+    if face_obj is None or not face_name:
+        from .compat import QtWidgets
+
+        options = ["XY plane", "XZ plane", "YZ plane"]
+        choice, accepted = QtWidgets.QInputDialog.getItem(
+            Gui.getMainWindow(), "New sketch", "Sketch plane:", options, 0, False
+        )
+        if not accepted:
+            return _fail("Sketch cancelled.")
+        wanted = {
+            "XY plane": "XY_Plane",
+            "XZ plane": "XZ_Plane",
+            "YZ plane": "YZ_Plane",
+        }.get(choice, "XY_Plane")
         try:
-            Gui.runCommand(command)
-        except Exception:
-            continue
-        try:
-            gdoc = _gui_doc()
-            opened = bool(Gui.Control.activeDialog()) or (
-                gdoc is not None and gdoc.getInEdit() is not None
+            feature = next(
+                (f for f in body.Origin.OriginFeatures if f.Name == wanted), None
             )
         except Exception:
-            opened = True
-        if opened:
-            return _ok("Sketch started. If the plane chooser is open, choose the selected face or XY, XZ, or YZ.")
+            feature = None
 
-    return _fail("Could not start a new sketch. Select a face or plane and try again.")
+    try:
+        sketch = body.newObject("Sketcher::SketchObject", "Sketch")
+        if face_obj is not None and face_name:
+            sketch.AttachmentSupport = [(face_obj, face_name)]
+        elif feature is not None:
+            sketch.AttachmentSupport = [(feature, "")]
+        sketch.MapMode = "FlatFace"
+        doc.recompute()
+    except Exception as exc:
+        return _fail("Could not create the sketch: " + str(exc))
+
+    ok, message = _enter_sketch(sketch)
+    if not ok:
+        return _fail("Created the sketch, but could not open the editor. " + message)
+    _schedule_working_view(sketch)
+    where = "the selected face" if face_obj is not None and face_name else "the chosen plane"
+    return _ok("Sketch started on " + where + ". Draw the profile, then constrain it.")
 
 
 def new_part(snapshot: Snapshot) -> tuple[bool, str]:
@@ -595,7 +906,8 @@ def new_part(snapshot: Snapshot) -> tuple[bool, str]:
     doc.recompute()
     ok, message = _enter_sketch(sketch)
     if not ok:
-        return _fail("Created the body and sketch, but could not enter Sketcher. " + message)
+        return _fail("Created the body and sketch, but could not open the sketch editor. " + message)
+    _schedule_working_view(sketch)
     return _ok("Created a Body and a sketch on the XY plane. Draw the outer profile, then constrain it.")
 
 
@@ -612,29 +924,15 @@ def open_pad(snapshot: Snapshot) -> tuple[bool, str]:
 
 
 def open_pocket(snapshot: Snapshot) -> tuple[bool, str]:
-    sketch = _sketch_obj(snapshot)
-    if sketch is None:
-        return _fail("Draw the pocket profile on a face first, then click Pocket.")
+    from . import panel
+
     try:
-        if int(getattr(sketch, "GeometryCount", 0) or 0) <= 0:
-            return _fail("The pocket sketch is empty. Draw a closed profile first.")
-    except Exception:
-        pass
-    body = _parent_body(sketch)
-    if body is None:
-        return _fail("The pocket sketch must be inside a Body.")
-    try:
-        Gui.activateWorkbench("PartDesignWorkbench")
-    except Exception:
-        pass
-    _activate_body(body)
-    try:
-        Gui.Selection.clearSelection()
-        Gui.Selection.addSelection(sketch)
-    except Exception:
-        pass
-    Gui.runCommand("PartDesign_Pocket")
-    return _ok("Pocket started with the sketch selected. Set the depth and confirm.")
+        created = panel.show_pocket_dialog()
+    except Exception as exc:
+        return _fail("Could not open the Pocket dialog: " + str(exc))
+    if created:
+        return _ok("Pocket cut.")
+    return _fail("Pocket was cancelled. Select a closed sketch first.")
 
 
 def _select_top_face(body) -> Optional[int]:
@@ -661,24 +959,15 @@ def _select_top_face(body) -> Optional[int]:
 
 
 def open_hole(snapshot: Snapshot) -> tuple[bool, str]:
-    body = _body_obj(snapshot)
-    if body is None:
-        return _fail("No Body found.")
-    face = _select_top_face(body)
-    if face is None:
-        return _fail("Could not find a top face to start the hole from.")
+    from . import panel
+
     try:
-        Gui.activateWorkbench("PartDesignWorkbench")
-    except Exception:
-        pass
-    _activate_body(body)
-    Gui.runCommand("PartDesign_Hole")
-    try:
-        if Gui.Control.activeDialog():
-            return _ok("I selected the top face and opened the Hole dialog. Set the diameter and position, then confirm.")
-    except Exception:
-        pass
-    return _ok("I selected the top face and started the Hole command. If no dialog appeared, select a face and try again.")
+        created = panel.show_hole_dialog()
+    except Exception as exc:
+        return _fail("Could not open the Hole dialog: " + str(exc))
+    if created:
+        return _ok("Hole added.")
+    return _fail("Hole was cancelled. Create a solid first.")
 
 
 def _select_vertical_edges(body) -> int:
@@ -705,39 +994,27 @@ def _select_vertical_edges(body) -> int:
 
 
 def open_thickness(snapshot: Snapshot) -> tuple[bool, str]:
-    body = _body_obj(snapshot)
-    if body is None:
-        return _fail("No Body found.")
-    face = _select_top_face(body)
-    if face is None:
-        return _fail("Could not find a top face to open for the shell.")
+    from . import panel
+
     try:
-        Gui.activateWorkbench("PartDesignWorkbench")
-    except Exception:
-        pass
-    _activate_body(body)
-    Gui.runCommand("PartDesign_Thickness")
-    return _ok("Thickness started on the top face. Set the wall thickness and confirm.")
+        created = panel.show_thickness_dialog()
+    except Exception as exc:
+        return _fail("Could not open the Shell dialog: " + str(exc))
+    if created:
+        return _ok("Shell applied.")
+    return _fail("Shell was cancelled. Select the face to open first.")
 
 
 def open_fillet(snapshot: Snapshot) -> tuple[bool, str]:
-    body = _body_obj(snapshot)
-    if body is None:
-        return _fail("No Body found.")
-    count = _select_vertical_edges(body)
+    from . import panel
+
     try:
-        Gui.activateWorkbench("PartDesignWorkbench")
-    except Exception:
-        pass
-    _activate_body(body)
-    Gui.runCommand("PartDesign_Fillet")
-    try:
-        if Gui.Control.activeDialog():
-            suffix = f" I preselected {count} vertical edge(s); adjust the selection if needed." if count else ""
-            return _ok("Opened the Fillet dialog." + suffix + " Set a small radius and confirm.")
-    except Exception:
-        pass
-    return _ok("Started the Fillet command. If no dialog appeared, select the edges you want and try again.")
+        created = panel.show_fillet_dialog()
+    except Exception as exc:
+        return _fail("Could not open the Fillet dialog: " + str(exc))
+    if created:
+        return _ok("Fillet applied.")
+    return _fail("Fillet was cancelled. Select the edges to round first.")
 
 
 def open_export(snapshot: Snapshot) -> tuple[bool, str]:

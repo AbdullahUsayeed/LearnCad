@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from .compat import QtCore
+from .compat import QtCore, QtWidgets, blocking_modal
 
 from .analysis import analyze
 from .context import build_light_signature, build_snapshot
@@ -69,6 +69,15 @@ class MentorEngine(QtCore.QObject):
     def _tick(self, force: bool = False) -> None:
         if self._paused and not force:
             return
+        # Do not run the review while the user is dragging, orbiting or
+        # dimensioning. A concurrent solve makes the Sketcher view flicker.
+        try:
+            if not force and QtWidgets.QApplication.mouseButtons() != QtCore.Qt.NoButton:
+                return
+            if not force and blocking_modal() is not None:
+                return
+        except Exception:
+            pass
         try:
             signature = build_light_signature()
         except Exception as exc:

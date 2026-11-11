@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileNotice: Part of the CADet addon.
-"""Paid AI explanation layer.
+"""Optional AI explanation layer.
 
 The deterministic mentor in analysis.py is the source of truth. This module
-sends a compact, explicit summary of the model to the LearnCad AI server, which
-verifies the subscription and proxies the request to the language model.
+sends a compact, explicit summary of the model to the provider chosen in Setup:
+the LearnCad cloud subscription, a user-supplied OpenAI-compatible API, or a
+local Ollama server.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ You can see the live document state and a deterministic engineering review. Use 
 - Warn about consequences: printability, rebuildability, stress concentration, tolerance.
 - The user is learning. Explain the why, not just the click.
 - For "how do I...", "where is...", or "which button..." questions, use the exact LearnCad labels from the app guide and give a short numbered sequence. Do not mention the underlying CAD engine, its menus, workbenches, version, or the renderer. Never send the user to a menu that is not in the guide.
+- When telling the user to click a control, use its exact label from the app guide (Rect, Circle, Line, Coincident, Horiz, Vert, Dim, Radius, Done, Sketch, Pad, Export, Render). LearnCad highlights the first control label it finds in your answer, so naming it lets the button glow for the user.
 - If the guide does not cover a control, say that Simple Mode exposes the listed tools and that Setup can restore the advanced workspace.
 - Do not write code unless the user asks. If asked, keep it short and use the standard Python console API.
 - If the intent is ambiguous, ask one clarifying question instead of guessing.
@@ -75,7 +77,11 @@ def _compact_snapshot(snapshot: Snapshot) -> dict[str, Any]:
             ],
         })
     sketches = []
-    for sketch in doc.sketches[:6]:
+    for sketch in doc.sketches:
+        if sketch.helper:
+            continue
+        if len(sketches) >= 6:
+            break
         sketches.append({
             "label": sketch.label,
             "dof": sketch.dof,
@@ -122,12 +128,17 @@ def _compact_snapshot(snapshot: Snapshot) -> dict[str, Any]:
     }
 
 
+def _is_reasoning_model(model: str) -> bool:
+    return str(model or "").strip().lower().startswith("deepseek")
+
+
 def build_payload(
     question: str,
     snapshot: Snapshot,
     analysis: Analysis,
     model: str,
     history: list[dict[str, str]] | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     context = {
         "project": _compact_snapshot(snapshot),
@@ -148,12 +159,15 @@ def build_payload(
         if role in ("user", "assistant") and content:
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": user_text})
-    return {
+    payload: dict[str, Any] = {
         "model": model,
         "temperature": 0.2,
-        "max_tokens": 650,
+        "max_tokens": 1200 if reasoning_effort else 650,
         "messages": messages,
     }
+    if reasoning_effort:
+        payload["reasoning_effort"] = reasoning_effort
+    return payload
 
 
 def _extract_text(payload: dict[str, Any]) -> str:
@@ -185,43 +199,80 @@ def ask(
 ) -> str:
     if not settings.ai_ready(data):
         raise AIClientError(
-            "AI needs an active LearnCad subscription. The local mentor still works for free."
+            "AI is not connected yet. Pick a provider in Setup. The local coach still works for free."
         )
 
-    base_url = str(data.get("cloud_base_url", "") or "").strip()
-    token = settings.get_license_token(data)
-    if not base_url or not token:
-        raise AIClientError(
-            "Activate your LearnCad AI subscription in Setup. The local mentor still works for free."
-        )
-
-    model = str(data.get("ai_model", "learncad-ai") or "learncad-ai")
-    payload = build_payload(question, snapshot, analysis, model, history)
+    provider = settings.provider(data)
     try:
-        parsed = cloud_ai.chat(base_url, token, payload)
+        if provider == "learncad":
+            base_url = str(data.get("cloud_base_url", "") or "").strip()
+            token = settings.get_license_token(data)
+            if not base_url or not token:
+                raise AIClientError(
+                    "Activate your LearnCad AI subscription in Setup. The local coach still works for free."
+                )
+            model = str(data.get("ai_model", "learncad-ai") or "learncad-ai")
+            payload = build_payload(question, snapshot, analysis, model, history)
+            parsed = cloud_ai.chat(base_url, token, payload)
+        else:
+            fallback_base, fallback_model = settings.PROVIDER_DEFAULTS.get(provider, ("", ""))
+            base_url = str(data.get("direct_base_url", "") or "").strip() or fallback_base
+            api_key = settings.get_direct_api_key(data)
+            model = str(data.get("direct_model", "") or "").strip() or fallback_model
+            effort = "low" if _is_reasoning_model(model) else None
+            payload = build_payload(question, snapshot, analysis, model, history, effort)
+            parsed = cloud_ai.chat_compatible(base_url, api_key, payload)
     except cloud_ai.CloudAIError as exc:
         raise AIClientError(str(exc)) from exc
 
     text = _extract_text(parsed)
     if not text:
-        raise AIClientError("The AI server returned an empty answer.")
+        raise AIClientError("The AI provider returned an empty answer.")
     return text
 
 
 def test_connection(data: dict[str, Any]) -> tuple[bool, str]:
-    if not data.get("cloud_base_url"):
-        return False, "Set the LearnCad AI server URL first."
-    token = settings.get_license_token(data)
-    if not token:
-        return False, "Activate a subscription with your email and license code first."
+    provider = settings.provider(data)
+    if provider == "learncad":
+        if not data.get("cloud_base_url"):
+            return False, "Set the LearnCad AI server URL first."
+        token = settings.get_license_token(data)
+        if not token:
+            return False, "Activate a subscription with your email and license code first."
+        try:
+            result = cloud_ai.status(str(data.get("cloud_base_url", "")), token)
+        except cloud_ai.CloudAIError as exc:
+            return False, str(exc)
+        state = str(result.get("status", "") or "active").lower()
+        if state not in ("active", "trialing", "paid"):
+            return False, f"Subscription status: {state}."
+        expires = str(result.get("expires_at", "") or "").strip()
+        if expires:
+            return True, f"Subscription active. Expires {expires}."
+        return True, "Subscription active. AI is ready."
+
+    fallback_base, fallback_model = settings.PROVIDER_DEFAULTS.get(provider, ("", ""))
+    base_url = str(data.get("direct_base_url", "") or "").strip() or fallback_base
+    if not base_url:
+        return False, "Set the provider base URL first."
+    model = str(data.get("direct_model", "") or "").strip() or fallback_model
+    if not model:
+        return False, "Set the provider model name first."
+    api_key = settings.get_direct_api_key(data)
+    if provider in ("openai", "deepseek", "custom") and not api_key:
+        return False, "Add the provider API key first."
+    payload = {
+        "model": model,
+        "temperature": 0,
+        "max_tokens": 128 if _is_reasoning_model(model) else 8,
+        "messages": [{"role": "user", "content": "Reply with the single word OK."}],
+    }
+    if _is_reasoning_model(model):
+        payload["reasoning_effort"] = "low"
     try:
-        result = cloud_ai.status(str(data.get("cloud_base_url", "")), token)
+        result = cloud_ai.chat_compatible(base_url, api_key, payload, timeout=30)
     except cloud_ai.CloudAIError as exc:
         return False, str(exc)
-    state = str(result.get("status", "") or "active").lower()
-    if state not in ("active", "trialing", "paid"):
-        return False, f"Subscription status: {state}."
-    expires = str(result.get("expires_at", "") or "").strip()
-    if expires:
-        return True, f"Subscription active. Expires {expires}."
-    return True, "Subscription active. Paid AI is ready."
+    if not _extract_text(result):
+        return True, "Connected, but the provider returned no text. Check the model name."
+    return True, "Connection works. AI is ready."

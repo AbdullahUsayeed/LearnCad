@@ -1,0 +1,196 @@
+{
+  "schema": "learncad.course/1",
+  "id": "enclosure-basics",
+  "version": "1.0.0",
+  "title": "Design an electronics enclosure",
+  "summary": "Model a hollow enclosure for an ESP32 board, add four standoffs, make a lid, and export the parts.",
+  "author": "LearnCad team",
+  "license": "CC-BY-SA-4.0",
+  "difficulty": "intermediate",
+  "tags": ["freecad", "enclosure", "esp32", "3d-printing"],
+  "goal": "an enclosure for an ESP32 board",
+  "freecad_min": "1.1.0",
+  "learncad_min": "0.6.5",
+  "lessons": [
+    {
+      "id": "enclosure-shell",
+      "title": "Model the outer shell",
+      "summary": "Sketch the footprint and pad it to the wall height.",
+      "outcome": "A solid enclosure block with the right outer size.",
+      "walkthrough": {
+        "id": "enclosure-shell-walk",
+        "title": "Enclosure 1 - Model the outer shell",
+        "steps": [
+          {
+            "text": "In the Ask LearnCad bar, type an enclosure for an ESP32 board and press Enter."
+          },
+          {
+            "text": "Click Create Body + Sketch, then choose the XY plane.",
+            "target": "main:Sketch",
+            "when": "not_sketch",
+            "wait_for_sketch": true
+          },
+          {
+            "text": "Click Rect in the sketch toolbar.",
+            "target": "sketch:Rect"
+          },
+          {
+            "text": "Click two opposite corners. Right-click to stop the tool, then press Next."
+          },
+          {
+            "text": "Select the long edge, click Dimension, and set 70 mm.",
+            "target": "sketch:Dimension"
+          },
+          {
+            "text": "Click OK in the value dialog.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Select the short edge, click Dimension, and set 45 mm.",
+            "target": "sketch:Dimension"
+          },
+          {
+            "text": "Click OK in the value dialog.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Click Done to close the sketch.",
+            "target": "sketch:Done"
+          },
+          {
+            "text": "Select the profile, click Pad, set the height to 25 mm, then click OK.",
+            "target": "main:Pad"
+          },
+          {
+            "text": "Confirm the pad in the LearnCad dialog.",
+            "target": "dialog:OK"
+          }
+        ]
+      }
+    },
+    {
+      "id": "enclosure-hollow",
+      "title": "Hollow the enclosure",
+      "summary": "Pocket the inside so the board fits with a 2 mm wall.",
+      "outcome": "A shell with an even wall and an open top.",
+      "walkthrough": {
+        "id": "enclosure-hollow-walk",
+        "title": "Enclosure 2 - Hollow the shell",
+        "steps": [
+          {
+            "text": "Select the top face of the block, then press Next."
+          },
+          {
+            "text": "Click Sketch and choose that top face.",
+            "target": "main:Sketch"
+          },
+          {
+            "text": "Click Rect and draw an inner rectangle roughly 2 mm from each wall.",
+            "target": "sketch:Rect"
+          },
+          {
+            "text": "Dimension the inner rectangle to 66 mm by 41 mm, then click Done.",
+            "target": "sketch:Dimension"
+          },
+          {
+            "text": "Click OK in the value dialog.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Select the inner profile, open the Model menu, and choose Pocket.",
+            "target": "main:Pocket"
+          },
+          {
+            "text": "Set the depth to 23 mm so a 2 mm floor remains, then click OK.",
+            "target": "dialog:OK"
+          }
+        ]
+      }
+    },
+    {
+      "id": "enclosure-standoffs",
+      "title": "Add the board standoffs",
+      "summary": "Place four mounting bosses on the floor.",
+      "outcome": "Four standoffs that match the board holes.",
+      "walkthrough": {
+        "id": "enclosure-standoffs-walk",
+        "title": "Enclosure 3 - Add standoffs",
+        "steps": [
+          {
+            "text": "Measure the distance between the board mounting holes, then select the floor face."
+          },
+          {
+            "text": "Click Sketch and choose the floor face.",
+            "target": "main:Sketch"
+          },
+          {
+            "text": "Click Circle and place one circle at each hole position.",
+            "target": "sketch:Circle"
+          },
+          {
+            "text": "Select each circle, click Radius, and set 3 mm.",
+            "target": "sketch:Radius"
+          },
+          {
+            "text": "Click OK in the value dialog, then click Done.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Select the four circles, click Pad, and set the height to 5 mm.",
+            "target": "main:Pad"
+          },
+          {
+            "text": "Confirm the pad in the LearnCad dialog.",
+            "target": "dialog:OK"
+          }
+        ]
+      }
+    },
+    {
+      "id": "enclosure-lid",
+      "title": "Make the lid and export",
+      "summary": "Pad a thin lid on the top face, then save both printable parts.",
+      "outcome": "A lid and a shell ready to print.",
+      "walkthrough": {
+        "id": "enclosure-lid-walk",
+        "title": "Enclosure 4 - Lid and export",
+        "steps": [
+          {
+            "text": "Select the top rim of the shell, then press Next."
+          },
+          {
+            "text": "Click Sketch and choose that face.",
+            "target": "main:Sketch"
+          },
+          {
+            "text": "Click Rect and draw a rectangle 2 mm larger than the shell on every side.",
+            "target": "sketch:Rect"
+          },
+          {
+            "text": "Dimension the lid to 74 mm by 49 mm, then click Done.",
+            "target": "sketch:Dimension"
+          },
+          {
+            "text": "Click OK in the value dialog.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Select the lid profile, click Pad, set 3 mm, then confirm.",
+            "target": "main:Pad"
+          },
+          {
+            "text": "Confirm the pad in the LearnCad dialog.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Select the lid, click Export, and save an STL. Repeat for the shell."
+          },
+          {
+            "text": "Click Export on the main toolbar.",
+            "target": "main:Export"
+          }
+        ]
+      }
+    }
+  ]
+}

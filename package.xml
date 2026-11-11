@@ -17,9 +17,9 @@
 
   <icon>freecad/CADet/resources/icons/learncad.svg</icon>
 
-  <url type="repository" branch="main">https://github.com/AbdullahUsayeed/CADet</url>
-  <url type="bugtracker">https://github.com/AbdullahUsayeed/CADet/issues</url>
-  <url type="readme">https://github.com/AbdullahUsayeed/CADet/blob/main/README.md</url>
+  <url type="repository" branch="main">https://github.com/AbdullahUsayeed/LearnCad</url>
+  <url type="bugtracker">https://github.com/AbdullahUsayeed/LearnCad/issues</url>
+  <url type="readme">https://github.com/AbdullahUsayeed/LearnCad/blob/main/README.md</url>
 
   <content>
     <workbench>

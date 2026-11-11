@@ -1,0 +1,148 @@
+{
+  "schema": "learncad.course/1",
+  "id": "bracket-basics",
+  "version": "1.0.0",
+  "title": "Design a bracket",
+  "summary": "Build a 40 mm bracket from a closed profile, add mounting holes, soften the corners, and export a printable file.",
+  "author": "LearnCad team",
+  "license": "CC-BY-SA-4.0",
+  "difficulty": "beginner",
+  "tags": ["freecad", "beginner", "bracket", "3d-printing"],
+  "goal": "a bracket for a 40x40 extrusion",
+  "freecad_min": "1.1.0",
+  "learncad_min": "0.6.5",
+  "lessons": [
+    {
+      "id": "bracket-profile",
+      "title": "Sketch the bracket profile",
+      "summary": "Draw a closed L-shaped outline and give both legs a real size.",
+      "outcome": "A closed, fully constrained bracket profile.",
+      "walkthrough": {
+        "id": "bracket-profile-walk",
+        "title": "Bracket 1 - Sketch the profile",
+        "steps": [
+          {
+            "text": "In the Ask LearnCad bar, type a bracket for a 40x40 extrusion and press Enter."
+          },
+          {
+            "text": "Click Create Body + Sketch, then choose the XY plane.",
+            "target": "main:Sketch",
+            "when": "not_sketch",
+            "wait_for_sketch": true
+          },
+          {
+            "text": "Click Rect in the sketch toolbar.",
+            "target": "sketch:Rect"
+          },
+          {
+            "text": "Click one corner, then the opposite corner in the 3D view. Right-click to stop the tool, then press Next."
+          },
+          {
+            "text": "Select the bottom edge, then click Dimension.",
+            "target": "sketch:Dimension"
+          },
+          {
+            "text": "Type 40 mm in the LearnCad dialog and click OK.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Select an upright edge, then click Dimension again.",
+            "target": "sketch:Dimension"
+          },
+          {
+            "text": "Type 40 mm in the value dialog and click OK.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Click Done to close the sketch.",
+            "target": "sketch:Done"
+          }
+        ]
+      }
+    },
+    {
+      "id": "bracket-pad",
+      "title": "Give the bracket its width",
+      "summary": "Pad the profile into a solid that fits the extrusion.",
+      "outcome": "A solid bracket body.",
+      "walkthrough": {
+        "id": "bracket-pad-walk",
+        "title": "Bracket 2 - Pad to width",
+        "steps": [
+          {
+            "text": "If the sketch is still open, click Done to close it.",
+            "target": "sketch:Done",
+            "when": "sketch"
+          },
+          {
+            "text": "Select the closed profile, then click Pad.",
+            "target": "main:Pad"
+          },
+          {
+            "text": "Set the width to 40 mm in the LearnCad Pad dialog, then click OK.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Orbit the view and check that the two legs meet at a clean corner."
+          }
+        ]
+      }
+    },
+    {
+      "id": "bracket-holes",
+      "title": "Add the mounting holes",
+      "summary": "Place two clearance holes through the bracket.",
+      "outcome": "A bracket that bolts to the extrusion.",
+      "walkthrough": {
+        "id": "bracket-holes-walk",
+        "title": "Bracket 3 - Add mounting holes",
+        "steps": [
+          {
+            "text": "Select the face where the first bolt should pass through, then press Next."
+          },
+          {
+            "text": "Open the Model menu and choose Hole.",
+            "target": "main:Hole"
+          },
+          {
+            "text": "Set the diameter to 5 mm and click OK.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Repeat on the second mounting face. Keep the holes clear of the inner corner."
+          }
+        ]
+      }
+    },
+    {
+      "id": "bracket-fillet",
+      "title": "Fillet and export",
+      "summary": "Soften the outside corners and save a printable file.",
+      "outcome": "A printable STL or a STEP file for sharing.",
+      "walkthrough": {
+        "id": "bracket-fillet-walk",
+        "title": "Bracket 4 - Fillet and export",
+        "steps": [
+          {
+            "text": "Select the outer vertical edges. Hold Ctrl to add more edges, then press Next."
+          },
+          {
+            "text": "Open the Model menu and choose Fillet.",
+            "target": "main:Fillet"
+          },
+          {
+            "text": "Set a 2 mm radius in the LearnCad Fillet dialog, then click OK.",
+            "target": "dialog:OK"
+          },
+          {
+            "text": "Click Export on the main toolbar.",
+            "target": "main:Export"
+          },
+          {
+            "text": "Choose STL for printing or STEP for CAD exchange, then save the file."
+          }
+        ]
+      }
+    }
+  ]
+}

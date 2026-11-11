@@ -51,6 +51,44 @@ def test_activate_calls_the_expected_endpoint(monkeypatch):
     }
 
 
+def test_chat_compatible_uses_the_provider_key_and_endpoint(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout=0):
+        captured["url"] = request.full_url
+        captured["auth"] = request.get_header("Authorization")
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse({"choices": [{"message": {"content": "ok"}}]})
+
+    monkeypatch.setattr(cloud_ai.urllib.request, "urlopen", fake_urlopen)
+    result = cloud_ai.chat_compatible(
+        "https://api.example.com/v1/",
+        "sk-user-key",
+        {"model": "gpt-4o-mini", "messages": []},
+    )
+    assert result["choices"][0]["message"]["content"] == "ok"
+    assert captured["url"] == "https://api.example.com/v1/chat/completions"
+    assert captured["auth"] == "Bearer sk-user-key"
+
+
+def test_chat_compatible_accepts_a_full_endpoint_and_local_ollama(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout=0):
+        captured["url"] = request.full_url
+        captured["auth"] = request.get_header("Authorization")
+        return FakeResponse({"choices": [{"message": {"content": "ok"}}]})
+
+    monkeypatch.setattr(cloud_ai.urllib.request, "urlopen", fake_urlopen)
+    cloud_ai.chat_compatible(
+        "http://localhost:11434/v1/chat/completions",
+        "",
+        {"model": "llama3.1", "messages": []},
+    )
+    assert captured["url"] == "http://localhost:11434/v1/chat/completions"
+    assert captured["auth"] is None
+
+
 def test_chat_sends_the_bearer_token_and_payload(monkeypatch):
     captured = {}
 

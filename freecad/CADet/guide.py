@@ -15,15 +15,16 @@ APP_GUIDE = """LearnCad is a guided mechanical CAD workspace for learning by bui
 Units are millimetres. Simple Mode is on by default.
 
 THE WORKSPACE
-- The floating panel titled "LearnCad" is the coach. It can be moved. "I'm making" stores the user's goal and keeps it between sessions. Clear the field and press Enter to remove the goal. "DO THIS NEXT" shows the next step and one big button. "YOUR MENTOR SAYS" shows the most important note. "More details" opens Context, Plan, Activity, Review, and the "Ask LearnCad" box. The footer says whether AI is on.
-- Main toolbar, left to right: File | Undo, Redo, Fit | Sketch, Pad | Model, Export | Find, Coach, More. Sketch opens the plane chooser; with a face selected it sketches on that face. File holds New, Open, Save, Import and Print. Model holds the modeling features. More holds views, render, studio, setup, model tree and active body. Find opens the searchable list of every tool.
+- The left panel titled "LearnCad" is the coach and the only toolbox. It shows the model state, "DO THIS NEXT" with one big button, and a single "MENTOR" note. A slim "Ask LearnCad..." bar sits at the bottom; type a goal there or ask a question. The three-dot menu holds Courses, All tools, Studio look, Render studio, Setup and Collapse. The footer says whether AI is on.
+- The Course button under the status opens two courses: Start here (Sketch a sized profile, Constrain it, Pad and export) and Design a phone stand (side profile, width, cable opening, fillet and export). Each lesson highlights the next control and saves progress. Use it whenever the user asks where to learn or wants a guided lesson.
+- Main toolbar, left to right: File | Undo, Redo, Fit | Sketch, Pad | Model, Export | Find, Coach, More. Sketch opens a small LearnCad plane chooser (XY, XZ, YZ); with a face selected it sketches on that face. File holds New, Open, Save, Import and Print. Model holds the modeling features. More holds views, render, studio, setup, model tree and active body. Find opens the searchable list of every tool.
 - The 3D viewport has a navigation cube in the top-right. Middle-drag to orbit, Shift+middle-drag to pan, and scroll to zoom. Fit frames the model.
-- The Tasks panel at the top of the 3D area shows the active dialog (Sketch Edit, Pad parameters, Hole, Fillet). "Close" dismisses it.
+- LearnCad owns every dialog: Sketch plane, Dim/Radius value, Pad, Pocket, Hole, Fillet and Shell. The engine task bar is never shown, and there is no document tab bar. In a sketch, use the top sketch toolbar for constraints and Done to finish.
 - Simple Mode hides the advanced menus, default toolbars, status bar, and Model tree. Setup has a Simple Mode checkbox that restores the advanced workspace.
 - The coach is not a modal window. If it is closed, click Coach on the main toolbar.
 
 THE ONE WORKFLOW
-1. Type the part in "I'm making" (for example: a phone stand, a bracket, an enclosure). Press Enter.
+1. Type the part in the Ask LearnCad bar (for example: a phone stand, a bracket, an enclosure). Press Enter.
 2. Click Create Body + Sketch. LearnCad creates a Body and opens a sketch on the XY plane.
 3. Pick Rect, Circle, Arc, Slot or Line in the sketch toolbar. Click to place geometry. Right-click or Escape stops the tool. The Draw menu has ellipses, polygons, B-splines, points and more.
 4. Constrain: select geometry, then use Coincident, Horizontal, Vertical, Parallel, Perpendicular, Tangent, Equal, Dimension or Radius. The Constrain menu has every constraint, including Symmetric, Block, Lock, Angle and horizontal/vertical distances. The coach button changes with the state: Draw a rectangle, Guide me through constraints, or Close the sketch. Fully constrained means 0 degrees of freedom.
@@ -34,7 +35,7 @@ THE ONE WORKFLOW
 
 SKETCHING ON AN EXISTING PART
 - Select the face where the next sketch should live, then click Sketch on the main toolbar.
-- The plane chooser opens with that face selected. Confirm it, or choose XY, XZ, or YZ instead.
+- The LearnCad plane chooser opens with that face preselected. Choose XY, XZ, or YZ instead if needed.
 - The new sketch belongs to the active Body. Finish the current sketch with Done before starting another.
 
 SKETCH TOOLBAR
@@ -76,7 +77,7 @@ COACH BUTTONS
 - Render: renders a still from the current solid.
 - Setup: opens settings.
 - Coach: reopens the panel from the main toolbar.
-- More details > Ask LearnCad: ask a question. Without AI, the local mentor answers.
+- Ask LearnCad bar: type a goal or a question. Without AI, the local mentor answers.
 
 SETUP
 - Simple Mode on/off. Off restores the advanced workspace.
@@ -127,6 +128,20 @@ _HOWTO_MARKERS = (
     "what is the workflow",
     "get started",
     "start a part",
+    "press",
+    "click",
+    "what next",
+    "what now",
+    "what do i do",
+    "guide me",
+    "help me",
+    "stuck",
+    "highlight",
+    "which control",
+    "show me where",
+    "course",
+    "lesson",
+    "curriculum",
 )
 
 
@@ -138,6 +153,15 @@ def looks_like_howto(question: str) -> bool:
 def answer(question: str) -> str:
     q = (question or "").strip().lower()
 
+    if "course" in q or "lesson" in q or "curriculum" in q:
+        return (
+            "The LearnCad course has three lessons:\n"
+            "1. Sketch a sized profile.\n"
+            "2. Constrain it.\n"
+            "3. Pad and export.\n"
+            "Click the Courses button under the status in the LearnCad panel, then Start lesson. "
+            "Each step glows the next control, and progress is saved between sessions."
+        )
     if "rectangle" in q or "rect" in q:
         return (
             "To draw a rectangle:\n"
@@ -178,7 +202,7 @@ def answer(question: str) -> str:
             "To create a new sketch:\n"
             "1. Select the face or principal plane you want, or select nothing to choose XY, XZ, or YZ.\n"
             "2. Click Sketch on the main toolbar.\n"
-            "3. Confirm the selected face in the plane chooser, then draw and constrain the profile.\n"
+            "3. The LearnCad plane chooser preselects that face; choose it, then draw and constrain the profile.\n"
             "If a sketch is already open, click Done first."
         )
     if any(word in q for word in ("pad", "extrude", "make it solid", "make a solid")):
@@ -186,7 +210,7 @@ def answer(question: str) -> str:
             "To pad a sketch:\n"
             "1. Click Done to close the sketch.\n"
             "2. Click Pad on the main toolbar.\n"
-            "3. Enter the distance and direction in the Tasks panel.\n"
+            "3. Enter the distance and direction in the LearnCad Pad dialog.\n"
             "4. Confirm. Pad needs one closed profile.\n"
             "If Pad is unavailable, select the sketch or finish the current edit first."
         )
@@ -195,7 +219,7 @@ def answer(question: str) -> str:
             "To cut a pocket:\n"
             "1. Create and constrain a sketch on the face where the pocket belongs.\n"
             "2. Click Done to close it.\n"
-            "3. Click Pocket on the main toolbar.\n"
+            "3. Open the Model menu and choose Pocket.\n"
             "4. Set the depth and confirm.\n"
             "Select the sketch first if Pocket is unavailable."
         )
@@ -203,15 +227,15 @@ def answer(question: str) -> str:
         return (
             "To add a hole:\n"
             "1. Select the face where the hole should start.\n"
-            "2. Click Hole on the main toolbar.\n"
-            "3. Set the diameter, depth, and position in the Tasks panel, then confirm.\n"
+            "2. Open the Model menu and choose Hole.\n"
+            "3. Set the diameter and depth in the LearnCad Hole dialog, then confirm.\n"
             "For an M3 clearance hole, 3.2-3.4 mm is a good starting point. Printed holes often come out undersized."
         )
     if any(word in q for word in ("fillet", "chamfer", "round the edge", "round edges")):
         return (
             "To round edges:\n"
             "1. Select the edges you want to change in the 3D viewport.\n"
-            "2. Click Fillet on the main toolbar.\n"
+            "2. Open the Model menu and choose Fillet.\n"
             "3. Set the radius and confirm.\n"
             "Add fillets after the functional holes and pockets. For printed parts, 0.5-2 mm is usually enough."
         )
@@ -226,7 +250,7 @@ def answer(question: str) -> str:
     if any(word in q for word in ("render", "studio image", "picture", "photo")):
         return (
             "To make a studio image:\n"
-            "1. Click Render on the main toolbar.\n"
+            "1. Open the LearnCad menu (three dots) and choose Render studio.\n"
             "2. Choose the material and size in Setup if you want a different look.\n"
             "3. Render. The Render dialog can open Advanced scene to inspect the full studio setup.\n"
             "Studio applies the clean viewport look; Render produces the still image."
@@ -242,9 +266,9 @@ def answer(question: str) -> str:
     if any(word in q for word in ("panel", "coach", "more details", "ask learncad", "mentor")):
         return (
             "The floating LearnCad panel is the coach. If it is closed, click Coach on the main toolbar.\n"
-            "- I'm making stores the goal.\n"
+            "- The Ask LearnCad bar stores the goal when you type a part name.\n"
             "- DO THIS NEXT is the next action and its button.\n"
-            "- More details opens Context, Plan, Activity, Review, and Ask LearnCad.\n"
+            "- The slim Ask LearnCad bar types a goal or a question; the three-dot menu opens All tools, Studio, Render, Setup.\n"
             "- The coach works without AI. Setup turns AI explanations on if you want them."
         )
     if any(word in q for word in ("constrain", "constraint", "dimension", "radius", "coincident", "horizontal", "vertical", "dof", "degrees of freedom")):
@@ -276,7 +300,7 @@ def answer(question: str) -> str:
     if any(word in q for word in ("sketch", "start", "begin", "first", "get started", "workflow", "use learncad")):
         return (
             "Quick start:\n"
-            "1. Type what you are making in I'm making.\n"
+            "1. Type what you are making in the Ask LearnCad bar.\n"
             "2. Click Create Body + Sketch.\n"
             "3. Use Rect, Circle, or Line to draw the profile.\n"
             "4. Add Coincident, Horizontal/Vertical, then Dimension or Radius until the coach says 0 DoF left.\n"
@@ -347,7 +371,7 @@ WALKTHROUGHS: dict[str, Walkthrough] = {
                 target="sketch:Radius",
             ),
             WalkthroughStep(
-                "Enter the radius in the Tasks panel, then click OK.",
+                "Enter the radius in the LearnCad value dialog, then click OK.",
                 target="dialog:OK",
             ),
             WalkthroughStep(
@@ -360,7 +384,7 @@ WALKTHROUGHS: dict[str, Walkthrough] = {
                 target="main:Pad",
             ),
             WalkthroughStep(
-                "Set the pad distance in the Tasks panel, then click OK.",
+                "Set the distance in the LearnCad Pad dialog, then click OK.",
                 target="dialog:OK",
             ),
             WalkthroughStep(
@@ -388,7 +412,7 @@ WALKTHROUGHS: dict[str, Walkthrough] = {
                 target="sketch:Dimension",
             ),
             WalkthroughStep(
-                "Enter the size in the Tasks panel, then click OK.",
+                "Enter the size in the LearnCad value dialog, then click OK.",
                 target="dialog:OK",
             ),
             WalkthroughStep(
@@ -401,7 +425,7 @@ WALKTHROUGHS: dict[str, Walkthrough] = {
                 target="main:Pad",
             ),
             WalkthroughStep(
-                "Set the pad distance in the Tasks panel, then click OK.",
+                "Set the distance in the LearnCad Pad dialog, then click OK.",
                 target="dialog:OK",
             ),
             WalkthroughStep(
@@ -455,11 +479,11 @@ WALKTHROUGHS: dict[str, Walkthrough] = {
                 target="sketch:Coincident",
             ),
             WalkthroughStep(
-                "Good. Select a line that should be level, then click Horizontal.",
+                "Good. Select a line that should be level, then click Horiz.",
                 target="sketch:Horizontal",
             ),
             WalkthroughStep(
-                "Good. Select a line that should be upright, then click Vertical.",
+                "Good. Select a line that should be upright, then click Vert.",
                 target="sketch:Vertical",
             ),
             WalkthroughStep(
@@ -490,7 +514,7 @@ WALKTHROUGHS: dict[str, Walkthrough] = {
                 target="main:Pad",
             ),
             WalkthroughStep(
-                "Set the distance and direction in the Tasks panel, then click OK.",
+                "Set the distance and direction in the LearnCad Pad dialog, then click OK.",
                 target="dialog:OK",
             ),
             WalkthroughStep(
@@ -518,11 +542,11 @@ WALKTHROUGHS: dict[str, Walkthrough] = {
                 target="sketch:Done",
             ),
             WalkthroughStep(
-                "Click Pocket on the main toolbar. It is glowing orange.",
+                "Open the Model menu and choose Pocket. The menu button is glowing orange.",
                 target="main:Pocket",
             ),
             WalkthroughStep(
-                "Set the depth in the Tasks panel, then click OK.",
+                "Set the depth in the LearnCad Pocket dialog, then click OK.",
                 target="dialog:OK",
             ),
             WalkthroughStep(
@@ -538,11 +562,11 @@ WALKTHROUGHS: dict[str, Walkthrough] = {
                 "Select the face where the hole should start in the 3D view, then click Next."
             ),
             WalkthroughStep(
-                "Click Hole on the main toolbar. It is glowing orange.",
+                "Open the Model menu and choose Hole. The menu button is glowing orange.",
                 target="main:Hole",
             ),
             WalkthroughStep(
-                "Set the diameter and depth in the Tasks panel, then click OK.",
+                "Set the diameter and depth in the LearnCad Hole dialog, then click OK.",
                 target="dialog:OK",
             ),
             WalkthroughStep(
@@ -558,11 +582,11 @@ WALKTHROUGHS: dict[str, Walkthrough] = {
                 "Select the edges you want to round in the 3D view, then click Next."
             ),
             WalkthroughStep(
-                "Click Fillet on the main toolbar. It is glowing orange.",
+                "Open the Model menu and choose Fillet. The menu button is glowing orange.",
                 target="main:Fillet",
             ),
             WalkthroughStep(
-                "Set the radius in the Tasks panel, then click OK.",
+                "Set the radius in the LearnCad Fillet dialog, then click OK.",
                 target="dialog:OK",
             ),
             WalkthroughStep(
@@ -591,8 +615,8 @@ WALKTHROUGHS: dict[str, Walkthrough] = {
         "Render a studio image",
         (
             WalkthroughStep(
-                "Click Render on the main toolbar. "
-                "It is highlighted.",
+                "Open the LearnCad menu (three dots) and choose Render studio. "
+                "The menu button is highlighted.",
                 target="main:Render",
             ),
             WalkthroughStep(

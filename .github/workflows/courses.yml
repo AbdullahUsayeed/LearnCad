@@ -1,0 +1,40 @@
+name: Courses
+
+on:
+  pull_request:
+    paths:
+      - "site/courses/**"
+      - "freecad/CADet/course.py"
+      - "freecad/CADet/course_package.py"
+      - "freecad/CADet/guide.py"
+      - "tools/course_tool.py"
+      - "tests/test_course.py"
+      - "tests/test_course_package.py"
+      - ".github/workflows/courses.yml"
+  push:
+    paths:
+      - "site/courses/**"
+      - "freecad/CADet/course.py"
+      - "freecad/CADet/course_package.py"
+      - "freecad/CADet/guide.py"
+      - "tools/course_tool.py"
+      - "tests/test_course.py"
+      - "tests/test_course_package.py"
+      - ".github/workflows/courses.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependency
+        run: python -m pip install pytest
+      - name: Run pure tests
+        run: python -m pytest -q
+      - name: Validate catalog
+        run: python tools/course_tool.py check site/courses/catalog.json
+      - name: Validate packages
+        run: python tools/course_tool.py validate site/courses/packages/*.learncad

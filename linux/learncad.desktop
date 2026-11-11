@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=LearnCad
+GenericName=CAD Coach
+Comment=Beginner-friendly CAD with a live engineering mentor
+Exec=AppRun
+Icon=learncad
+Terminal=false
+Categories=Graphics;Science;Education;Engineering;
+MimeType=application/x-extension-fcstd;
+StartupNotify=true
+StartupWMClass=FreeCAD

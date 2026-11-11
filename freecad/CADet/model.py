@@ -115,6 +115,7 @@ class SketchInfo:
     geometry_types: list[str] = field(default_factory=list)
     state: list[str] = field(default_factory=list)
     visible: bool = True
+    helper: bool = False
 
     @property
     def is_empty(self) -> bool:
@@ -152,6 +153,7 @@ class SketchInfo:
             "dimensions": [{"kind": d.kind, "value": round(d.value, 3), "name": d.name} for d in self.dimensions],
             "geometry_types": self.geometry_types,
             "state": self.state,
+            "helper": self.helper,
         }
 
 

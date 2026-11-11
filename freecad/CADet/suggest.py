@@ -68,7 +68,7 @@ def suggest_action(snapshot: Snapshot, analysis: Analysis) -> Suggestion:
             return Suggestion(
                 "guide_sketch",
                 "Open sketch and show me",
-                "Enter Sketcher and preselect the geometry that needs the next constraint.",
+                "Enter the sketch and preselect the geometry that needs the next constraint.",
             )
         return Suggestion(
             "edit_feature",
@@ -78,16 +78,16 @@ def suggest_action(snapshot: Snapshot, analysis: Analysis) -> Suggestion:
 
     if any(issue.code == "underconstrained" for issue in analysis.warnings):
         return Suggestion(
-            "guide_sketch",
-            "Guide me through constraints",
-            "Enter Sketcher and preselect the missing endpoints or lines.",
+            "fix_constraints",
+            "Make it fully constrained",
+            "Add the missing constraints automatically and keep the current shape.",
         )
 
     if not doc.bodies and doc.features:
         return Suggestion(
             "open_export",
             "Open the Export dialog",
-            "This is a Part-workbench model; select the result and export it.",
+            "This is a loose model; select the result and export it.",
         )
 
     body = _first_body(snapshot)
@@ -115,7 +115,7 @@ def suggest_action(snapshot: Snapshot, analysis: Analysis) -> Suggestion:
             return Suggestion(
                 "close_sketch",
                 "Finish the sketch",
-                "The profile is ready. Leave Sketcher, then pad it.",
+                "The profile is ready. Close the sketch, then pad it.",
             )
 
     if body.feature_count == 0 or not body.has_solid:

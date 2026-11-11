@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="lcTitle lcDesc">
+  <title id="lcTitle">LearnCad block app icon</title>
+  <desc id="lcDesc">An extruded L block on a rounded dark tile.</desc>
+  <rect x="0.7" y="0.7" width="62.6" height="62.6" rx="14" fill="#0a0a0c" stroke="#ff7a18" stroke-width="0.9"/>
+  <ellipse cx="32" cy="56" rx="27" ry="18" fill="#1c1208"/>
+  <polygon points="20,23 29,14 40,14 40,26 31,35 31,23" fill="#ffb347"/>
+  <polygon points="31,35 40,26 54,26 54,35 45,44 31,44" fill="#d65c0c"/>
+  <polygon points="20,44 20,23 31,23 31,35 45,35 45,44" fill="#ff7a18"/>
+  <polyline points="20,44 20,23 31,23 31,35 45,35 45,44 20,44" fill="none" stroke="#ffcda0" stroke-width="0.8" stroke-opacity="0.65" stroke-linejoin="round"/>
+</svg>
