@@ -7,9 +7,8 @@
   "author": "LearnCad team",
   "license": "CC-BY-SA-4.0",
   "difficulty": "intermediate",
-  "tags": ["freecad", "enclosure", "esp32", "3d-printing"],
+  "tags": ["cad", "enclosure", "esp32", "3d-printing"],
   "goal": "an enclosure for an ESP32 board",
-  "freecad_min": "1.1.0",
   "learncad_min": "0.6.5",
   "lessons": [
     {

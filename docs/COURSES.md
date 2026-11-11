@@ -29,9 +29,8 @@ my-course.learncad
   "author": "Your Name",
   "license": "CC-BY-SA-4.0",
   "difficulty": "beginner",
-  "tags": ["freecad", "beginner", "3d-printing"],
+  "tags": ["cad", "beginner", "3d-printing"],
   "goal": "a desk hook",
-  "freecad_min": "1.1.0",
   "learncad_min": "0.6.5",
   "lessons": [
     {
@@ -129,7 +128,7 @@ existing package and edit it. A semantic recorder is the next major piece.
 - LearnCad code is LGPL-2.1-or-later.
 - Course packages default to `CC BY-SA 4.0`. Use another license only if you
   have the right to do so, and put the license id in `manifest.json`.
-- Do not upload a FreeCAD document or image that contains someone else's
+- Do not upload a CAD document or image that contains someone else's
   proprietary design.
 - The LearnCad name and logo are not covered by the code license.
 

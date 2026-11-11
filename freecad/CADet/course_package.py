@@ -6,8 +6,8 @@ Packages are data-only zip files. They contain a root ``manifest.json`` and
 optional preview or checkpoint assets. No Python, macros, or executables are
 allowed, and every asset must be listed with its SHA256 hash.
 
-This module is pure Python. It does not import FreeCAD or Qt, so the workbench,
-the command-line tool, and CI can all use it.
+This module is pure Python. It does not import the CAD engine or Qt, so the
+application, the command-line tool, and CI can all use it.
 """
 
 from __future__ import annotations
@@ -132,7 +132,7 @@ def validate_manifest(data: Any) -> list[str]:
     if not isinstance(version, str) or not _VERSION_RE.fullmatch(version):
         errors.append("version must be a semantic version such as 1.0.0")
 
-    for field in ("title", "summary", "author", "license", "freecad_min", "learncad_min"):
+    for field in ("title", "summary", "author", "license", "learncad_min"):
         _check_text(data.get(field), field, errors, limit=500)
 
     difficulty = data.get("difficulty", "beginner")
@@ -268,7 +268,6 @@ def build_manifest(
         "difficulty": difficulty,
         "tags": list(tags),
         "goal": goal,
-        "freecad_min": "1.1.0",
         "learncad_min": "0.6.5",
         "lessons": [],
         "assets": [],
@@ -603,7 +602,6 @@ def _catalog_entry(
         "goal": manifest.get("goal", ""),
         "tags": list(manifest.get("tags", [])),
         "lesson_count": len(manifest["lessons"]),
-        "freecad_min": manifest["freecad_min"],
         "learncad_min": manifest["learncad_min"],
         "package": package_base + package_path.name,
         "sha256": _sha256_file(package_path),

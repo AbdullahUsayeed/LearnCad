@@ -1,8 +1,8 @@
 # LearnCad brand assets
 
-LearnCad is a coaching edition for FreeCAD. The logo combines a drafting compass
-with a learning-by-building idea. It is intentionally simple enough to read at
-toolbar and favicon sizes.
+LearnCad is a CAD coaching app. The logo combines a drafting compass with a
+learning-by-building idea. It is intentionally simple enough to read at toolbar
+and favicon sizes.
 
 ## Files
 
@@ -53,5 +53,5 @@ where Segoe UI is unavailable.
 
 ## Naming
 
-The product is **LearnCad**. The underlying engine is still FreeCAD. The logo
-does not imply endorsement by the FreeCAD project.
+The product is **LearnCad**. The logo and name identify the LearnCad app; the
+modeling engine is an internal component.

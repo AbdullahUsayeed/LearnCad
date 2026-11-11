@@ -1,58 +1,47 @@
 # LearnCad guide
 
-LearnCad is a coach inside FreeCAD. It reads the active document, explains what
-is wrong, and highlights the next control. You still draw and confirm the
+LearnCad is a CAD workspace with a coach. It reads the active model, explains
+what is wrong, and highlights the next control. You still draw and confirm the
 geometry.
 
 ## What you need
 
-- FreeCAD 1.1 or newer.
-- Windows for the tested build. Linux and macOS use the manual install.
-- No Python packages or account for the local coach.
+- Windows 10 or 11, or a Linux desktop.
+- The LearnCad installer or AppImage.
+- No account for the local coach. No extra packages.
 
 ## Install
 
-### Windows installer
+### Windows
 
-1. Close FreeCAD.
+1. Close LearnCad if it is already running.
 2. Run `LearnCad-Setup-0.6.5.exe` from `site/downloads/`.
-3. Reopen FreeCAD.
+3. Open LearnCad from the Start Menu or the desktop shortcut.
 
-The installer copies LearnCad into
-`%APPDATA%\FreeCAD\v1-1\Mod\LearnCad` and adds an uninstall entry.
+The installer sets up the app for your user. It does not need an administrator
+password.
 
-### Manual install
+### Linux
 
-Copy this repository into the FreeCAD `Mod` folder so this file exists:
+Build the AppImage from the repository:
 
-```text
-<Mod>/LearnCad/package.xml
+```bash
+./linux/build_appimage.sh
 ```
 
-Common locations:
-
-```text
-Windows  %APPDATA%\FreeCAD\v1-1\Mod\
-Linux    ~/.local/share/FreeCAD/Mod/
-macOS    ~/Library/Application Support/FreeCAD/Mod/
-```
-
-Restart FreeCAD after copying.
+Run the generated file in `dist/`. LearnCad keeps its own user data directory,
+so it does not mix with another CAD installation.
 
 ## Open LearnCad
 
-1. Start FreeCAD.
-2. Choose **LearnCad** in the workbench selector.
-3. Or press `Ctrl+Shift+M` from any workbench.
-4. The coach opens on the left.
-
-If the panel is hidden, press `Ctrl+Shift+M` or use **View > Panels**.
+Start LearnCad. The coaching panel opens automatically on the left. If it is
+hidden, press `Ctrl+Shift+M`.
 
 ## Your first part: a bracket
 
 1. In **Ask LearnCad**, type `a bracket for a 40x40 extrusion` and press Enter.
-2. Press **Guide me**. With no document open, it creates a document, a
-   PartDesign Body, and a sketch on the XY plane.
+2. Press **Guide me**. With no document open, it creates a document, a body,
+   and a sketch on the XY plane.
 3. Draw a rectangle with **Rect**. Click two opposite corners.
 4. Select the bottom edge, click **Dimension**, and set 40 mm.
 5. Select an upright edge, click **Dimension**, and set 40 mm.
@@ -125,27 +114,26 @@ never uploaded. If the provider fails, LearnCad falls back to the local answer.
 ## Studio look and render
 
 - **Studio look** applies anti-aliasing, a gradient background, orthographic
-  camera, light bodies, dark edges, and larger icons. Restart FreeCAD for icons
+  camera, light bodies, dark edges, and larger icons. Restart LearnCad for icons
   and anti-aliasing.
 - **Render studio** exports the active solid to Blender for a still image.
   Blender is optional; set its path in **Setup**.
 
 ## Troubleshooting
 
-### LearnCad is not in the workbench selector
+### LearnCad will not start
 
-- Confirm FreeCAD 1.1 or newer.
-- Confirm `<Mod>/LearnCad/package.xml` exists.
-- Restart FreeCAD.
+- Reinstall the latest LearnCad build.
+- On Linux, make sure the AppImage is executable: `chmod +x LearnCad-*.AppImage`.
 
-### Guide me cannot enter Sketcher
+### Guide me cannot enter the sketch
 
 - Finish the current sketch with **Done**.
-- Make sure the sketch belongs to the active PartDesign Body.
+- Make sure the sketch belongs to the active body.
 
 ### The panel does not update
 
-- Press **Review** or switch workbenches and back.
+- Press **Review** or switch tools and back.
 - Check that the intended document is active.
 
 ### A dialog did not open
@@ -160,8 +148,8 @@ closed wire.
 
 ### Remove LearnCad
 
-Uninstall it from Windows Apps & Features, then delete
-`%APPDATA%\FreeCAD\v1-1\LearnCad` to remove settings, the goal, and license data.
+Uninstall it from Windows Apps & Features. On Linux, delete the AppImage and the
+LearnCad data folder in your home directory.
 
 ## Privacy
 
@@ -171,7 +159,6 @@ enable AI and accept the privacy note.
 
 ## More documentation
 
-- [docs/USAGE.md](docs/USAGE.md) - full reference.
 - [docs/COURSES.md](docs/COURSES.md) - course package format and publishing.
 - [site/README.md](site/README.md) - landing page and deployment notes.
 

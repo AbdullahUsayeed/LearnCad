@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileNotice: Part of the CADet addon.
-"""Structural tests for the guided courses. No FreeCAD required."""
+"""Structural tests for the guided courses. No CAD engine required."""
 
 from __future__ import annotations
 

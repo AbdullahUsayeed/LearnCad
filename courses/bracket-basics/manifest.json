@@ -7,9 +7,8 @@
   "author": "LearnCad team",
   "license": "CC-BY-SA-4.0",
   "difficulty": "beginner",
-  "tags": ["freecad", "beginner", "bracket", "3d-printing"],
+  "tags": ["cad", "beginner", "bracket", "3d-printing"],
   "goal": "a bracket for a 40x40 extrusion",
-  "freecad_min": "1.1.0",
   "learncad_min": "0.6.5",
   "lessons": [
     {

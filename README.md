@@ -1,42 +1,32 @@
 # LearnCad
 
-A live CAD coach inside FreeCAD. It reads the active model, explains what is wrong, highlights the next control, and walks you through building a real part.
+A CAD workspace with a live coach. It reads your model, explains what is wrong, highlights the next tool, and walks you through building a real part.
 
-- Free, local-first, no account required.
-- FreeCAD 1.1+ workbench.
-- Deterministic review engine; optional AI explanations.
+- Free and local-first. No account required.
+- Live constraint, feature, and printability review.
+- Optional AI explanations.
 - Free community `.learncad` courses.
+- Windows installer and Linux AppImage.
 
 ## Install
 
-**Windows:** run `site/downloads/LearnCad-Setup-0.6.5.exe` and close FreeCAD first.
+**Windows:** run `site/downloads/LearnCad-Setup-0.6.5.exe`.
 
-**Manual:** copy this folder into your FreeCAD `Mod` directory so `LearnCad/package.xml` exists:
-
-```text
-Windows  %APPDATA%\FreeCAD\v1-1\Mod\LearnCad
-Linux    ~/.local/share/FreeCAD/Mod/LearnCad
-macOS    ~/Library/Application Support/FreeCAD/Mod/LearnCad
-```
-
-Restart FreeCAD.
+**Linux:** build the AppImage with `./linux/build_appimage.sh`, or run LearnCad from the repository.
 
 ## Start
 
-1. Select **LearnCad** in the workbench selector, or press `Ctrl+Shift+M`.
+1. Open LearnCad.
 2. Type what you want to build in **Ask LearnCad**, for example `a phone stand`.
 3. Press **Guide me**.
-4. Follow the highlighted control in the panel.
+4. Follow the highlighted control.
 5. Press **Fix constraints for me** when a sketch is under-constrained.
 6. Use **Courses** for guided lessons, or **Import course...** for a downloaded `.learncad` package.
 7. Export STL for printing or STEP for CAD exchange.
 
-No Python packages are required. The local coach works offline.
-
 ## Learn more
 
-- [GUIDE.md](GUIDE.md) - install, first project, panel buttons, courses, AI setup, troubleshooting.
-- [docs/USAGE.md](docs/USAGE.md) - full usage reference.
+- [GUIDE.md](GUIDE.md) - install, first project, panel controls, courses, AI setup, troubleshooting.
 - [docs/COURSES.md](docs/COURSES.md) - author and publish a course.
 
 ## Develop

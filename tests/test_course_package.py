@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileNotice: Part of the CADet addon.
-"""Tests for the .learncad course package format. No FreeCAD required."""
+"""Tests for the .learncad course package format. No CAD engine required."""
 
 from __future__ import annotations
 

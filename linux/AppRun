@@ -1,7 +1,7 @@
 #!/bin/bash
 # LearnCad standalone AppImage entry point.
-# Keeps LearnCad's FreeCAD data separate from a normal FreeCAD installation and
-# registers LearnCad (not FreeCAD) with the desktop so the taskbar/dock matches.
+# Keeps LearnCad's engine data separate from another installation and registers
+# LearnCad with the desktop so the taskbar and dock match.
 set -u
 
 HERE="$(dirname "$(readlink -f "${0}")")"
@@ -9,7 +9,7 @@ export APPDIR="${APPDIR:-$HERE}"
 export LEARNCAD_STANDALONE=1
 
 # Register the app menu entry and icon on first run. This is what makes the
-# dock/taskbar resolve the window to LearnCad instead of FreeCAD.
+# dock/taskbar resolve the window to LearnCad instead of the engine name.
 SELF="${APPIMAGE:-$HERE}"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"

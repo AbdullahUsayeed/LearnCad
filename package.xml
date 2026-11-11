@@ -3,7 +3,7 @@
 <!-- SPDX-FileNotice: Part of the CADet addon. -->
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
   <name>LearnCad</name>
-  <description>LearnCad is a custom orange-and-black coaching edition for FreeCAD. It watches the active model, explains what is wrong, praises what is right, and opens the next tool. Deterministic local review; optional AI explanations.</description>
+  <description>LearnCad is a free CAD coaching workspace. It watches the active model, explains what is wrong, praises what is right, and opens the next tool. Deterministic local review; optional AI explanations.</description>
   <version>0.6.5</version>
   <date>2026-10-18</date>
 
@@ -33,5 +33,5 @@
   <tag>CAD</tag>
   <tag>Review</tag>
   <tag>Beginner</tag>
-  <tag>PartDesign</tag>
+  <tag>Modeling</tag>
 </package>

@@ -3,18 +3,17 @@
     {
       "author": "LearnCad team",
       "difficulty": "beginner",
-      "freecad_min": "1.1.0",
       "goal": "a bracket for a 40x40 extrusion",
       "id": "bracket-basics",
       "learncad_min": "0.6.5",
       "lesson_count": 4,
       "license": "CC-BY-SA-4.0",
       "package": "packages/bracket-basics-1.0.0.learncad",
-      "sha256": "bf3672838a4bbac0910b67c5e2342158f50a1265a437dbf9b24a667395ec1719",
-      "size": 1418,
+      "sha256": "814e496ab186a9b14867a0c7e8811f69caa345461826b946b2db3492214a9062",
+      "size": 1408,
       "summary": "Build a 40 mm bracket from a closed profile, add mounting holes, soften the corners, and export a printable file.",
       "tags": [
-        "freecad",
+        "cad",
         "beginner",
         "bracket",
         "3d-printing"
@@ -25,18 +24,17 @@
     {
       "author": "LearnCad team",
       "difficulty": "intermediate",
-      "freecad_min": "1.1.0",
       "goal": "an enclosure for an ESP32 board",
       "id": "enclosure-basics",
       "learncad_min": "0.6.5",
       "lesson_count": 4,
       "license": "CC-BY-SA-4.0",
       "package": "packages/enclosure-basics-1.0.0.learncad",
-      "sha256": "e554d7956d845fc847c322fe363128613a663e3f211a5e6764062792c6c49438",
-      "size": 1522,
+      "sha256": "977835a878824e08f166ac46546a650a2f63f02af447961600688dff884721d5",
+      "size": 1510,
       "summary": "Model a hollow enclosure for an ESP32 board, add four standoffs, make a lid, and export the parts.",
       "tags": [
-        "freecad",
+        "cad",
         "enclosure",
         "esp32",
         "3d-printing"

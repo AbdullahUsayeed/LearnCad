@@ -16,7 +16,15 @@ GREEN = (70, 194, 141)
 
 
 def font(name: str, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(Path("C:/Windows/Fonts") / name), size)
+    windows = Path("C:/Windows/Fonts") / name
+    if windows.exists():
+        return ImageFont.truetype(str(windows), size)
+    fallbacks = {
+        "segoeuib.ttf": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "segoeui.ttf": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "segoeuisl.ttf": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    }
+    return ImageFont.truetype(fallbacks.get(name, fallbacks["segoeui.ttf"]), size)
 
 
 def main() -> None:
@@ -42,12 +50,12 @@ def main() -> None:
 
     draw.text(
         (74, 388),
-        "Constraints first. One real part at a time. A senior engineer in the room.",
+        "Constraints first. One real part at a time. A coach in the room.",
         font=font("segoeui.ttf", 24),
         fill=MUTED,
     )
 
-    pills = ["FreeCAD 1.1+", "Windows", "Local-first", "Free"]
+    pills = ["Windows", "Linux", "Local-first", "Free"]
     x = 74
     for label in pills:
         width = draw.textlength(label, font=font("segoeuisl.ttf", 18))

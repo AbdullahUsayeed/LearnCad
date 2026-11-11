@@ -2,10 +2,10 @@
 # Build a standalone LearnCad AppImage for Linux.
 #
 #   ./linux/build_appimage.sh
-#   FREECAD_APPIMAGE=/path/to/FreeCAD.AppImage ./linux/build_appimage.sh
+#   LEARNCAD_ENGINE_APPIMAGE=/path/to/engine.AppImage ./linux/build_appimage.sh
 #
-# The result bundles FreeCAD + the LearnCad workbench and launches straight into
-# LearnCad with its own isolated user data directory.
+# The result bundles the modeling engine and LearnCad, then launches straight
+# into LearnCad with its own isolated user data directory.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,7 +18,11 @@ TOOLS="$BUILD/tools"
 TOOL="$TOOLS/appimagetool"
 OUT="$ROOT/dist/LearnCad-$VERSION-linux-x86_64.AppImage"
 
-find_freecad() {
+find_engine() {
+    if [ -n "${LEARNCAD_ENGINE_APPIMAGE:-}" ] && [ -f "$LEARNCAD_ENGINE_APPIMAGE" ]; then
+        printf '%s\n' "$LEARNCAD_ENGINE_APPIMAGE"
+        return
+    fi
     if [ -n "${FREECAD_APPIMAGE:-}" ] && [ -f "$FREECAD_APPIMAGE" ]; then
         printf '%s\n' "$FREECAD_APPIMAGE"
         return
@@ -38,28 +42,27 @@ find_freecad() {
     return 1
 }
 
-FREECAD_APPIMAGE="$(find_freecad || true)"
-if [ -z "$FREECAD_APPIMAGE" ]; then
+ENGINE_APPIMAGE="$(find_engine || true)"
+if [ -z "$ENGINE_APPIMAGE" ]; then
     cat >&2 <<'EOF'
-Could not find a FreeCAD AppImage. Download one from
-https://github.com/FreeCAD/FreeCAD/releases and set:
+Could not find a compatible engine AppImage. Set:
 
-    FREECAD_APPIMAGE=/path/to/FreeCAD.AppImage ./linux/build_appimage.sh
+    LEARNCAD_ENGINE_APPIMAGE=/path/to/engine.AppImage ./linux/build_appimage.sh
 EOF
     exit 1
 fi
 
 echo "LearnCad version : $VERSION"
-echo "FreeCAD AppImage : $FREECAD_APPIMAGE"
+echo "Engine AppImage  : $ENGINE_APPIMAGE"
 
 mkdir -p "$BUILD" "$TOOLS"
 
 if [ ! -x "$APPDIR/AppRun.freecad" ]; then
-    echo "Extracting FreeCAD AppImage (first run only)..."
+    echo "Extracting the modeling engine (first run only)..."
     rm -rf "$APPDIR" "$BUILD/squashfs-root"
     (
         cd "$BUILD"
-        "$FREECAD_APPIMAGE" --appimage-extract >/dev/null
+        "$ENGINE_APPIMAGE" --appimage-extract >/dev/null
     )
     mv "$BUILD/squashfs-root" "$APPDIR"
     mv "$APPDIR/AppRun" "$APPDIR/AppRun.freecad"
@@ -93,8 +96,8 @@ install -m 644 "$ROOT/brand/app-icon/learncad-app-compass-256.png" \
 rm -f "$APPDIR/org.freecad.FreeCAD.desktop"
 rm -f "$APPDIR/.DirIcon.dpkg-dist"
 
-# Rebrand the bundled FreeCAD desktop entry/icons as a fallback, so any desktop
-# that still resolves the engine id shows LearnCad anyway.
+# Rebrand the bundled engine desktop entry and icons as a fallback, so any
+# desktop that still resolves the engine id shows LearnCad anyway.
 install -m 644 "$ROOT/linux/learncad.desktop" \
     "$APPDIR/usr/share/applications/org.freecad.FreeCAD.desktop"
 ICON_ROOT="$APPDIR/usr/share/icons/hicolor"
